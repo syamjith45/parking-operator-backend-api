@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Parking Operator API
 
 Back-end API for Parking Operator System using Node.js, Express, and GraphQL.
@@ -49,3 +50,6 @@ query {
   }
 }
 ```
+=======
+# parking-operator-backend-api
+>>>>>>> 4efd453d8a3ea20eecfb8ed81a1dca846432f783

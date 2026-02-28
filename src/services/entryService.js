@@ -17,7 +17,7 @@ class EntryService {
      * Log vehicle entry
      */
     async logEntry(input) {
-        const { driverPhone, vehicleType, vehicleNumber, staffId } = input;
+        const { driverPhone, vehicleType, vehicleNumber, staffId, declaredDurationHours } = input;
 
         // Validate inputs
         if (!validatePhoneNumber(driverPhone)) {
@@ -35,6 +35,14 @@ class EntryService {
 
         // Get pricing rule
         const pricingRule = await pricingService.getPricingRule(cleanVehicleType);
+
+        let baseFee = pricingRule.base_fee;
+
+        if (declaredDurationHours && declaredDurationHours > pricingRule.base_hours) {
+            // Charge extra for pre-declared hours beyond base
+            const extraHours = declaredDurationHours - pricingRule.base_hours;
+            baseFee = pricingRule.base_fee + (extraHours * pricingRule.extra_hour_rate);
+        }
 
         // Verify staff exists
         const { data: staff, error: staffError } = await supabase
@@ -66,7 +74,8 @@ class EntryService {
                 vehicle_number: cleanVehicleNumber,
                 entry_time: entryTime,
                 status: 'ACTIVE',
-                base_fee_paid: pricingRule.base_fee,
+                base_fee_paid: baseFee,
+                declared_duration_hours: declaredDurationHours || null,
                 created_by: staffId
             })
             .select(`

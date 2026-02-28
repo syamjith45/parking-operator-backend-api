@@ -30,8 +30,11 @@ class ExitService {
         const exitTime = getCurrentTimestamp();
         const durationMinutes = calculateDurationMinutes(vehicle.entry_time, exitTime);
 
-        // Calculate overstay
-        const baseMinutes = pricingRule.base_hours * 60;
+        // Calculate overstay - respect declared duration if greater than base
+        const baseMinutes = Math.max(
+            pricingRule.base_hours * 60,
+            (vehicle.declared_duration_hours || 0) * 60
+        );
         const { overstayMinutes, overstayFee } = calculateOverstayFee(
             durationMinutes > 0 ? durationMinutes : 0, // Ensure non-negative
             baseMinutes,

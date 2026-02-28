@@ -38,7 +38,10 @@ class DashboardService {
 
             let baseMinutes = 0;
             if (pricingRule) {
-                baseMinutes = pricingRule.base_hours * 60;
+                baseMinutes = Math.max(
+                    pricingRule.base_hours * 60,
+                    (vehicle.declared_duration_hours || 0) * 60
+                );
             }
 
             const isOverstay = durationMinutes > baseMinutes;

@@ -27,6 +27,7 @@ const typeDefs = gql`
     driver_phone: String!
     vehicle_type: String!
     vehicle_number: String
+    declared_duration_hours: Int
     entry_time: DateTime!
     exit_time: DateTime
     status: String!
@@ -92,11 +93,39 @@ const typeDefs = gql`
     revenue: String!
   }
 
+  type TransactionRecord {
+    id: ID!
+    session_id: String!
+    driver_phone: String!
+    vehicle_type: String!
+    vehicle_number: String
+    entry_time: DateTime!
+    exit_time: DateTime
+    status: String!
+    base_fee_paid: Float!
+    duration_minutes: Int
+    declared_duration_hours: Int
+    overstay_minutes: Int
+    overstay_fee: Float
+    total_amount: Float!
+    created_by_staff: Staff
+    overstay_charges: [OverstayCharge]
+  }
+
+  type TransactionHistoryResult {
+    records: [TransactionRecord!]!
+    total_count: Int!
+    page: Int!
+    page_size: Int!
+    total_pages: Int!
+  }
+
   # Inputs
   input VehicleEntryInput {
     driver_phone: String!
     vehicle_type: String!
     vehicle_number: String
+    declared_duration_hours: Int
     # staff_id is now inferred from context
   }
 
@@ -118,6 +147,17 @@ const typeDefs = gql`
     # Staff
     staff(id: ID!): Staff
     me: Staff
+
+    # Transactions
+    transactionHistory(
+      page: Int
+      page_size: Int
+      status: String
+      vehicle_type: String
+      start_date: DateTime
+      end_date: DateTime
+      search: String
+    ): TransactionHistoryResult!
   }
 
   # Mutations

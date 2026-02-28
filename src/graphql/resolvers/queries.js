@@ -1,6 +1,7 @@
 const dashboardService = require('../../services/dashboardService');
 const revenueService = require('../../services/revenueService');
 const pricingService = require('../../services/pricingService');
+const transactionService = require('../../services/transactionService');
 const { supabase } = require('../../config/database');
 
 const queries = {
@@ -55,6 +56,18 @@ const queries = {
             throw new Error('Not authenticated');
         }
         return context.staff;
+    },
+
+    transactionHistory: async (_, { page, page_size, status, vehicle_type, start_date, end_date, search }) => {
+        return await transactionService.getTransactionHistory({
+            page: page || 1,
+            pageSize: page_size || 20,
+            status,
+            vehicleType: vehicle_type,
+            startDate: start_date,
+            endDate: end_date,
+            search
+        });
     }
 };
 

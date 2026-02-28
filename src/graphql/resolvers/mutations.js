@@ -11,6 +11,7 @@ const mutations = {
             driverPhone: input.driver_phone,
             vehicleType: input.vehicle_type,
             vehicleNumber: input.vehicle_number,
+            declaredDurationHours: input.declared_duration_hours || null,
             staffId: context.staff.id
         };
         return await entryService.logEntry(entryInput);
