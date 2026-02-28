@@ -6,15 +6,20 @@ class DashboardService {
     /**
      * Get all active vehicles
      */
-    async getActiveVehicles() {
-        const { data, error } = await supabase
+    async getActiveVehicles(staff = null) {
+        let query = supabase
             .from('vehicles')
             .select(`
         *,
         created_by_staff:staff!created_by(id, name, role)
       `)
-            .eq('status', 'ACTIVE')
-            .order('entry_time', { ascending: false });
+            .eq('status', 'ACTIVE');
+
+        if (staff && staff.role !== 'admin') {
+            query = query.eq('created_by', staff.id);
+        }
+
+        const { data, error } = await query.order('entry_time', { ascending: false });
 
         if (error) {
             throw new Error('Failed to fetch active vehicles');
@@ -83,22 +88,27 @@ class DashboardService {
     /**
      * Get statistics for today
      */
-    async getTodayStats() {
+    async getTodayStats(staff = null) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        // Active vehicles count
-        const { count: activeCount, error: countError } = await supabase
+        let activeQuery = supabase
             .from('vehicles')
             .select('*', { count: 'exact', head: true })
             .eq('status', 'ACTIVE');
+
+        if (staff && staff.role !== 'admin') {
+            activeQuery = activeQuery.eq('created_by', staff.id);
+        }
+
+        // Active vehicles count
+        const { count: activeCount, error: countError } = await activeQuery;
 
         if (countError) {
             console.warn('Error fetching active count', countError);
         }
 
-        // Today's completed sessions
-        const { data: completedToday, error } = await supabase
+        let completedQuery = supabase
             .from('vehicles')
             .select(`
         base_fee_paid,
@@ -106,6 +116,13 @@ class DashboardService {
       `)
             .eq('status', 'EXITED')
             .gte('exit_time', today.toISOString());
+
+        if (staff && staff.role !== 'admin') {
+            completedQuery = completedQuery.eq('created_by', staff.id);
+        }
+
+        // Today's completed sessions
+        const { data: completedToday, error } = await completedQuery;
 
         if (error) {
             throw new Error('Failed to fetch today statistics');

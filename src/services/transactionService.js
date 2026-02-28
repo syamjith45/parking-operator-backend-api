@@ -15,7 +15,7 @@ class TransactionService {
         startDate,
         endDate,
         search
-    }) {
+    }, staff = null) {
         let query = supabase
             .from('vehicles')
             .select(`
@@ -43,6 +43,10 @@ class TransactionService {
 
         if (search) {
             query = query.or(`vehicle_number.ilike.%${search}%,driver_phone.ilike.%${search}%,session_id.ilike.%${search}%`);
+        }
+
+        if (staff && staff.role !== 'admin') {
+            query = query.eq('created_by', staff.id);
         }
 
         // Apply pagination

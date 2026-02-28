@@ -6,16 +6,16 @@ const { supabase } = require('../../config/database');
 
 const queries = {
     // Dashboard queries
-    activeVehicles: async () => {
-        return await dashboardService.getActiveVehicles();
+    activeVehicles: async (_, __, context) => {
+        return await dashboardService.getActiveVehicles(context.staff);
     },
 
     getVehicleBySession: async (_, { session_id }) => {
         return await dashboardService.getVehicleBySession(session_id);
     },
 
-    dashboardStats: async () => {
-        return await dashboardService.getTodayStats();
+    dashboardStats: async (_, __, context) => {
+        return await dashboardService.getTodayStats(context.staff);
     },
 
     // Pricing queries
@@ -58,7 +58,7 @@ const queries = {
         return context.staff;
     },
 
-    transactionHistory: async (_, { page, page_size, status, vehicle_type, start_date, end_date, search }) => {
+    transactionHistory: async (_, { page, page_size, status, vehicle_type, start_date, end_date, search }, context) => {
         return await transactionService.getTransactionHistory({
             page: page || 1,
             pageSize: page_size || 20,
@@ -67,7 +67,7 @@ const queries = {
             startDate: start_date,
             endDate: end_date,
             search
-        });
+        }, context.staff);
     }
 };
 
