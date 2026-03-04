@@ -1,5 +1,6 @@
 const entryService = require('../../services/entryService');
 const exitService = require('../../services/exitService');
+const pricingService = require('../../services/pricingService');
 const { requireRole } = require('../../middleware/auth');
 
 const mutations = {
@@ -27,6 +28,28 @@ const mutations = {
     collectOverstayPayment: async (_, { overstay_charge_id }, context) => {
         requireRole(context, ['operator', 'admin', 'manager']);
         return await exitService.collectOverstayPayment(overstay_charge_id, context.staff.id);
+    },
+
+    // Configuration mutation
+    updatePricingRules: async (_, { rules }, context) => {
+        requireRole(context, ['admin', 'manager']);
+
+        const updatedRules = [];
+        for (const rule of rules) {
+            const { vehicle_type, ...updates } = rule;
+
+            // Filter to only allowed DB columns
+            const dbUpdates = {};
+            if (updates.base_fee !== undefined) dbUpdates.base_fee = updates.base_fee;
+            if (updates.base_hours !== undefined) dbUpdates.base_hours = updates.base_hours;
+            if (updates.extra_hour_rate !== undefined) dbUpdates.extra_hour_rate = updates.extra_hour_rate;
+
+            if (Object.keys(dbUpdates).length > 0) {
+                const updated = await pricingService.updatePricingRule(vehicle_type, dbUpdates);
+                updatedRules.push(updated);
+            }
+        }
+        return updatedRules;
     }
 };
 

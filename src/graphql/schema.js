@@ -129,6 +129,13 @@ const typeDefs = gql`
     # staff_id is now inferred from context
   }
 
+  input PricingRuleInput {
+    vehicle_type: String!
+    base_fee: Float
+    base_hours: Int
+    extra_hour_rate: Float
+  }
+
   # Queries
   type Query {
     # Dashboard
@@ -170,6 +177,9 @@ const typeDefs = gql`
     
     # Payment
     collectOverstayPayment(overstay_charge_id: ID!): OverstayCharge!
+
+    # Settings / Configuration
+    updatePricingRules(rules: [PricingRuleInput!]!): [PricingRule]!
   }
 `;
 
