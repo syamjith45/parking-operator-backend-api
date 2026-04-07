@@ -4,17 +4,19 @@ const { calculateOverstayFee, calculateDurationMinutes } = require('../utils/cal
 const { getCurrentTimestamp } = require('../utils/dateHelpers');
 
 class ExitService {
+
     /**
-     * Process vehicle exit
+     * Process vehicle exit.
+     * CHANGE: getPricingRule now receives vehicle.space_id (already stamped at entry).
+     * No need to derive space from staff — it lives on the vehicle row itself.
      */
     async processExit(sessionId, staffId) {
-        // Fetch active session
         const { data: vehicle, error: fetchError } = await supabase
             .from('vehicles')
             .select(`
-        *,
-        created_by_staff:staff!created_by(id, name)
-      `)
+                *,
+                created_by_staff:staff!created_by(id, name)
+            `)
             .eq('session_id', sessionId)
             .eq('status', 'ACTIVE')
             .single();
@@ -23,31 +25,31 @@ class ExitService {
             throw new Error('Active session not found');
         }
 
-        // Get pricing rule
-        const pricingRule = await pricingService.getPricingRule(vehicle.vehicle_type);
+        // CHANGE: pass vehicle.space_id — this was stamped at entry and never changes
+        const pricingRule = await pricingService.getPricingRule(
+            vehicle.vehicle_type,
+            vehicle.space_id
+        );
 
-        // Calculate duration
-        const exitTime = getCurrentTimestamp();
+        const exitTime        = getCurrentTimestamp();
         const durationMinutes = calculateDurationMinutes(vehicle.entry_time, exitTime);
 
-        // Calculate overstay - respect declared duration if greater than base
         const baseMinutes = Math.max(
             pricingRule.base_hours * 60,
             (vehicle.declared_duration_hours || 0) * 60
         );
+
         const { overstayMinutes, overstayFee } = calculateOverstayFee(
-            durationMinutes > 0 ? durationMinutes : 0, // Ensure non-negative
+            durationMinutes > 0 ? durationMinutes : 0,
             baseMinutes,
             pricingRule.extra_hour_rate
         );
 
-        // Update vehicle status to EXITED
-        // In a real scenario, we might want to use a transaction or RPC call for atomicity
         const { error: updateError } = await supabase
             .from('vehicles')
             .update({
-                exit_time: exitTime,
-                status: 'EXITED',
+                exit_time:  exitTime,
+                status:     'EXITED',
                 updated_at: exitTime
             })
             .eq('id', vehicle.id);
@@ -58,60 +60,51 @@ class ExitService {
 
         let overstayRecord = null;
 
-        // Create overstay charge if applicable
         if (overstayFee > 0) {
             const { data: charge, error: chargeError } = await supabase
                 .from('overstay_charges')
                 .insert({
-                    vehicle_id: vehicle.id,
+                    vehicle_id:       vehicle.id,
                     overstay_minutes: overstayMinutes,
-                    fee_amount: overstayFee,
-                    is_collected: false
+                    fee_amount:       overstayFee,
+                    is_collected:     false
                 })
                 .select()
                 .single();
 
             if (chargeError) {
                 console.error('Failed to create overstay charge:', chargeError);
-                // Note: The vehicle is already exited, but the charge failed. 
-                // We might want to handle this better (e.g. valid manual intervention).
             } else {
                 overstayRecord = charge;
             }
         }
 
         return {
-            session_id: vehicle.session_id,
-            vehicle_type: vehicle.vehicle_type,
-            driver_phone: vehicle.driver_phone,
-            entry_time: vehicle.entry_time,
-            exit_time: exitTime,
-            duration_minutes: durationMinutes,
-            base_fee_paid: vehicle.base_fee_paid,
-            overstay_minutes: overstayMinutes,
-            overstay_fee: overstayFee,
-            total_amount: parseFloat(vehicle.base_fee_paid) + overstayFee,
-            overstay_record: overstayRecord,
+            session_id:         vehicle.session_id,
+            vehicle_type:       vehicle.vehicle_type,
+            driver_phone:       vehicle.driver_phone,
+            entry_time:         vehicle.entry_time,
+            exit_time:          exitTime,
+            duration_minutes:   durationMinutes,
+            base_fee_paid:      vehicle.base_fee_paid,
+            overstay_minutes:   overstayMinutes,
+            overstay_fee:       overstayFee,
+            total_amount:       parseFloat(vehicle.base_fee_paid) + overstayFee,
+            overstay_record:    overstayRecord,
             processed_by_staff: staffId
         };
     }
 
-    /**
-     * Collect overstay payment
-     */
     async collectOverstayPayment(overstayChargeId, staffId) {
-        // Check if valid staff
-        // In production, context should already have validated staff
-
         const { data, error } = await supabase
             .from('overstay_charges')
             .update({
-                is_collected: true,
-                collected_by: staffId,
-                collected_at: getCurrentTimestamp()
+                is_collected:  true,
+                collected_by:  staffId,
+                collected_at:  getCurrentTimestamp()
             })
             .eq('id', overstayChargeId)
-            .eq('is_collected', false) // Ensure it wasn't already collected
+            .eq('is_collected', false)
             .select()
             .single();
 

@@ -1,34 +1,109 @@
-const express = require('express');
+const express          = require('express');
 const { ApolloServer } = require('apollo-server-express');
-const cors = require('cors');
-const typeDefs = require('./graphql/schema');
-const resolvers = require('./graphql/resolvers');
+const cors             = require('cors');
+const typeDefs         = require('./graphql/schema');
+const resolvers        = require('./graphql/resolvers');
 require('dotenv').config();
 const { authenticateUser } = require('./middleware/auth');
-const { supabase } = require('./config/database');
+const { supabase }         = require('./config/database');
 
 async function startServer() {
     const app = express();
 
-    // Middleware
     app.use(cors());
     app.use(express.json());
 
-    // Health check endpoint
+    // Health check — unchanged
     app.get('/health', (req, res) => {
         res.json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
-    // Endpoint to register staff (creates Auth user + Staff record)
+    // ─── Register Staff ────────────────────────────────────────────────────────
+    // CHANGES:
+    //   1. Caller must be authenticated (Authorization header required)
+    //   2. Accepts organization_id and space_id in body
+    //   3. Role-based rules: operators can't create anyone, managers can only
+    //      create operators within their own org
     app.post('/api/register-staff', async (req, res) => {
-        const { email, password, name, phone, role } = req.body;
 
-        if (!email || !password || !name || !role) {
-            return res.status(400).json({ error: 'Missing required fields: email, password, name, role' });
+        // Step 1: authenticate the caller
+        const authHeader = req.headers.authorization || '';
+        let caller = null;
+
+        if (authHeader) {
+            try {
+                const { staff } = await authenticateUser(authHeader);
+                caller = staff;
+            } catch {
+                return res.status(401).json({ error: 'Unauthorized' });
+            }
+        }
+
+        if (!caller) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        const { email, password, name, phone, role, organization_id, space_id } = req.body;
+
+        // Validate required fields
+        if (!email || !password || !name || !role || !organization_id) {
+            return res.status(400).json({
+                error: 'Missing required fields: email, password, name, role, organization_id'
+            });
+        }
+
+        // Role-based creation rules
+        if (caller.role === 'operator') {
+            return res.status(403).json({ error: 'Operators cannot create staff accounts' });
+        }
+
+        if (caller.role === 'manager') {
+            if (role !== 'operator') {
+                return res.status(403).json({ error: 'Managers can only create operator accounts' });
+            }
+            if (organization_id !== caller.organization_id) {
+                return res.status(403).json({ error: 'Cannot create staff for a different organization' });
+            }
+        }
+
+        // Operators must have a space; managers must not
+        if (role === 'operator' && !space_id) {
+            return res.status(400).json({ error: 'Operators require a space_id' });
+        }
+        if (role === 'manager' && space_id) {
+            return res.status(400).json({ error: 'Managers should not be assigned to a space' });
         }
 
         try {
-            // 1. Create user in Supabase Auth
+            // Validate org exists and is active
+            const { data: org } = await supabase
+                .from('organizations')
+                .select('id')
+                .eq('id', organization_id)
+                .eq('is_active', true)
+                .single();
+
+            if (!org) {
+                return res.status(400).json({ error: 'Organization not found or inactive' });
+            }
+
+            // Validate space belongs to org
+            if (space_id) {
+                const { data: space } = await supabase
+                    .from('spaces')
+                    .select('id, organization_id')
+                    .eq('id', space_id)
+                    .single();
+
+                if (!space) {
+                    return res.status(400).json({ error: 'Space not found' });
+                }
+                if (space.organization_id !== organization_id) {
+                    return res.status(400).json({ error: 'Space does not belong to this organization' });
+                }
+            }
+
+            // Create Supabase Auth user
             const { data: authData, error: authError } = await supabase.auth.signUp({
                 email,
                 password,
@@ -37,24 +112,24 @@ async function startServer() {
             if (authError) throw authError;
 
             if (!authData.user) {
-                return res.status(400).json({ error: 'User creation failed. (Check if email is already taken)' });
+                return res.status(400).json({ error: 'User creation failed. (Email may already be taken)' });
             }
 
             const userId = authData.user.id;
 
-            // 2. Insert into staff table
+            // Insert staff record
             const { data: staffData, error: staffError } = await supabase
                 .from('staff')
-                .insert([
-                    {
-                        user_id: userId,
-                        name,
-                        email: email,
-                        phone: phone || null,
-                        role,
-                        is_active: true
-                    }
-                ])
+                .insert([{
+                    user_id:         userId,
+                    name,
+                    email,
+                    phone:           phone           || null,
+                    role,
+                    organization_id,
+                    space_id:        space_id        || null,
+                    is_active:       true
+                }])
                 .select()
                 .single();
 
@@ -62,8 +137,8 @@ async function startServer() {
 
             res.status(201).json({
                 message: 'Staff user created successfully',
-                user: authData.user,
-                staff: staffData
+                user:    authData.user,
+                staff:   staffData
             });
 
         } catch (error) {
@@ -72,29 +147,22 @@ async function startServer() {
         }
     });
 
-    // Apollo Server setup
+    // ─── Apollo Server ────────────────────────────────────────────────────────
+
     const server = new ApolloServer({
         typeDefs,
         resolvers,
         context: async ({ req }) => {
             const authHeader = req.headers.authorization || '';
-            let authContext = { req };
+            let authContext  = { req };
 
             try {
                 if (authHeader) {
-                    const { user, staff, token } = await authenticateUser(authHeader);
-                    authContext = {
-                        req,
-                        user,
-                        staff,
-                        token
-                    };
+                    // CHANGE: context now includes organization and space
+                    const { user, staff, organization, space, token } = await authenticateUser(authHeader);
+                    authContext = { req, user, staff, organization, space, token };
                 }
             } catch (error) {
-                // If token is invalid, we don't necessarily want to crash the whole request context creation
-                // But we can attach the error or just no user context.
-                // For simplicity, we'll log it and proceed without user.
-                // Resolvers will handle missing auth.
                 console.warn('Auth context creation failed:', error.message);
             }
 
@@ -104,7 +172,7 @@ async function startServer() {
             console.error('GraphQL Error:', error);
             return {
                 message: error.message,
-                code: error.extensions?.code || 'INTERNAL_SERVER_ERROR'
+                code:    error.extensions?.code || 'INTERNAL_SERVER_ERROR'
             };
         }
     });

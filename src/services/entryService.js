@@ -4,9 +4,7 @@ const { validatePhoneNumber, validateVehicleType, sanitizeInput } = require('../
 const { getCurrentTimestamp } = require('../utils/dateHelpers');
 
 class EntryService {
-    /**
-     * Generate unique session ID
-     */
+
     generateSessionId() {
         const timestamp = Date.now().toString(36);
         const random = Math.random().toString(36).substring(2, 7);
@@ -14,12 +12,19 @@ class EntryService {
     }
 
     /**
-     * Log vehicle entry
+     * Log a vehicle entry.
+     * CHANGE: now accepts spaceId from context and stamps it on the vehicle row.
      */
     async logEntry(input) {
-        const { driverPhone, vehicleType, vehicleNumber, staffId, declaredDurationHours } = input;
+        const {
+            driverPhone,
+            vehicleType,
+            vehicleNumber,
+            staffId,
+            declaredDurationHours,
+            spaceId   // NEW — passed from context.staff.space_id in the resolver
+        } = input;
 
-        // Validate inputs
         if (!validatePhoneNumber(driverPhone)) {
             throw new Error('Invalid phone number format');
         }
@@ -28,23 +33,19 @@ class EntryService {
             throw new Error('Invalid vehicle type. Must be: bike, car, or truck');
         }
 
-        // Sanitize inputs
-        const cleanPhone = sanitizeInput(driverPhone);
-        const cleanVehicleType = vehicleType.toLowerCase();
+        const cleanPhone         = sanitizeInput(driverPhone);
+        const cleanVehicleType   = vehicleType.toLowerCase();
         const cleanVehicleNumber = vehicleNumber ? sanitizeInput(vehicleNumber) : null;
 
-        // Get pricing rule
-        const pricingRule = await pricingService.getPricingRule(cleanVehicleType);
+        // CHANGE: pass spaceId so pricing is fetched for this specific space
+        const pricingRule = await pricingService.getPricingRule(cleanVehicleType, spaceId);
 
         let baseFee = pricingRule.base_fee;
-
         if (declaredDurationHours && declaredDurationHours > pricingRule.base_hours) {
-            // Charge extra for pre-declared hours beyond base
             const extraHours = declaredDurationHours - pricingRule.base_hours;
             baseFee = pricingRule.base_fee + (extraHours * pricingRule.extra_hour_rate);
         }
 
-        // Verify staff exists
         const { data: staff, error: staffError } = await supabase
             .from('staff')
             .select('id')
@@ -55,33 +56,32 @@ class EntryService {
             throw new Error('Invalid staff ID');
         }
 
-        // Check for existing active session
         const existingSession = await this.checkActiveSession(cleanPhone);
         if (existingSession) {
             throw new Error(`Active session already exists for this number: ${existingSession.session_id}`);
         }
 
-        // Create session
         const sessionId = this.generateSessionId();
         const entryTime = getCurrentTimestamp();
 
         const { data: vehicle, error: vehicleError } = await supabase
             .from('vehicles')
             .insert({
-                session_id: sessionId,
-                driver_phone: cleanPhone,
-                vehicle_type: cleanVehicleType,
-                vehicle_number: cleanVehicleNumber,
-                entry_time: entryTime,
-                status: 'ACTIVE',
-                base_fee_paid: baseFee,
+                session_id:              sessionId,
+                driver_phone:            cleanPhone,
+                vehicle_type:            cleanVehicleType,
+                vehicle_number:          cleanVehicleNumber,
+                entry_time:              entryTime,
+                status:                  'ACTIVE',
+                base_fee_paid:           baseFee,
                 declared_duration_hours: declaredDurationHours || null,
-                created_by: staffId
+                created_by:              staffId,
+                space_id:                spaceId || null   // NEW — stamped permanently here
             })
             .select(`
-        *,
-        created_by_staff:staff!created_by(id, name, role)
-      `)
+                *,
+                created_by_staff:staff!created_by(id, name, role)
+            `)
             .single();
 
         if (vehicleError) {
@@ -95,9 +95,6 @@ class EntryService {
         };
     }
 
-    /**
-     * Check for existing active sessions for phone number
-     */
     async checkActiveSession(driverPhone) {
         const { data, error } = await supabase
             .from('vehicles')
@@ -108,7 +105,6 @@ class EntryService {
             .limit(1);
 
         if (error) {
-            // Don't throw here, just return null or log warning
             console.warn('Error checking active session:', error);
             return null;
         }

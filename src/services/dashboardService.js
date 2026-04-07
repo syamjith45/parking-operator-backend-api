@@ -1,23 +1,36 @@
-const { supabase } = require('../config/database');
+const { supabase }                = require('../config/database');
 const { calculateDurationMinutes } = require('../utils/calculations');
-const pricingService = require('./pricingService');
+const pricingService               = require('./pricingService');
+
+/**
+ * CHANGE: scoping helper replaces the old `staff.role !== 'admin'` check.
+ * - admin    → no filter, sees everything
+ * - manager  → filters by organization via staff join
+ * - operator → filters by space_id (immutable on vehicle row)
+ */
+function applyScope(query, context) {
+    const { staff, organization, space } = context || {};
+    if (!staff || staff.role === 'admin') return query;
+    if (staff.role === 'manager') {
+        return query.eq('created_by_staff.organization_id', organization.id);
+    }
+    // operator
+    return query.eq('space_id', space.id);
+}
 
 class DashboardService {
-    /**
-     * Get all active vehicles
-     */
-    async getActiveVehicles(staff = null) {
+
+    async getActiveVehicles(context = {}) {
         let query = supabase
             .from('vehicles')
             .select(`
-        *,
-        created_by_staff:staff!created_by(id, name, role)
-      `)
+                *,
+                created_by_staff:staff!created_by!inner(id, name, role, organization_id)
+            `)
             .eq('status', 'ACTIVE');
 
-        if (staff && staff.role !== 'admin') {
-            query = query.eq('created_by', staff.id);
-        }
+        // CHANGE: use applyScope instead of old created_by filter
+        query = applyScope(query, context);
 
         const { data, error } = await query.order('entry_time', { ascending: false });
 
@@ -29,16 +42,16 @@ class DashboardService {
             return [];
         }
 
-        // Enrich with duration and overstay info
-        // Fetch pricing rules once to optimize loop
-        const pricingRules = await pricingService.getAllPricingRules();
-        const rulesMap = pricingRules.reduce((acc, rule) => {
+        // CHANGE: pass spaceId to get the right pricing rules for this space
+        const spaceId      = context.space?.id || null;
+        const pricingRules = await pricingService.getAllPricingRules(spaceId);
+        const rulesMap     = pricingRules.reduce((acc, rule) => {
             acc[rule.vehicle_type] = rule;
             return acc;
         }, {});
 
-        const enrichedVehicles = data.map((vehicle) => {
-            const pricingRule = rulesMap[vehicle.vehicle_type];
+        return data.map((vehicle) => {
+            const pricingRule     = rulesMap[vehicle.vehicle_type];
             const durationMinutes = calculateDurationMinutes(vehicle.entry_time, new Date());
 
             let baseMinutes = 0;
@@ -49,32 +62,27 @@ class DashboardService {
                 );
             }
 
-            const isOverstay = durationMinutes > baseMinutes;
+            const isOverstay     = durationMinutes > baseMinutes;
             const overstayMinutes = isOverstay ? durationMinutes - baseMinutes : 0;
 
             return {
                 ...vehicle,
-                duration_minutes: durationMinutes,
-                is_overstay: isOverstay,
-                overstay_minutes: overstayMinutes,
-                base_minutes: baseMinutes
+                duration_minutes:  durationMinutes,
+                is_overstay:       isOverstay,
+                overstay_minutes:  overstayMinutes,
+                base_minutes:      baseMinutes
             };
         });
-
-        return enrichedVehicles;
     }
 
-    /**
-     * Get vehicle by session ID
-     */
     async getVehicleBySession(sessionId) {
         const { data, error } = await supabase
             .from('vehicles')
             .select(`
-        *,
-        created_by_staff:staff!created_by(id, name, role),
-        overstay_charges(*)
-      `)
+                *,
+                created_by_staff:staff!created_by!inner(id, name, role),
+                overstay_charges(*)
+            `)
             .eq('session_id', sessionId)
             .single();
 
@@ -85,25 +93,19 @@ class DashboardService {
         return data;
     }
 
-    /**
-     * Get statistics for today
-     */
-    async getTodayStats(staff = null) {
+    async getTodayStats(context = {}) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         let activeQuery = supabase
             .from('vehicles')
-            .select('*', { count: 'exact', head: true })
+            .select('*, created_by_staff:staff!created_by!inner(organization_id)', { count: 'exact', head: true })
             .eq('status', 'ACTIVE');
 
-        if (staff && staff.role !== 'admin') {
-            activeQuery = activeQuery.eq('created_by', staff.id);
-        }
+        // CHANGE: use applyScope
+        activeQuery = applyScope(activeQuery, context);
 
-        // Active vehicles count
         const { count: activeCount, error: countError } = await activeQuery;
-
         if (countError) {
             console.warn('Error fetching active count', countError);
         }
@@ -111,25 +113,23 @@ class DashboardService {
         let completedQuery = supabase
             .from('vehicles')
             .select(`
-        base_fee_paid,
-        overstay_charges(fee_amount, is_collected)
-      `)
+                base_fee_paid,
+                overstay_charges(fee_amount, is_collected),
+                created_by_staff:staff!created_by!inner(organization_id)
+            `)
             .eq('status', 'EXITED')
             .gte('exit_time', today.toISOString());
 
-        if (staff && staff.role !== 'admin') {
-            completedQuery = completedQuery.eq('created_by', staff.id);
-        }
+        // CHANGE: use applyScope
+        completedQuery = applyScope(completedQuery, context);
 
-        // Today's completed sessions
         const { data: completedToday, error } = await completedQuery;
 
         if (error) {
             throw new Error('Failed to fetch today statistics');
         }
 
-        // Calculate revenue
-        const baseFees = completedToday.reduce((sum, v) => sum + parseFloat(v.base_fee_paid || 0), 0);
+        const baseFees     = completedToday.reduce((sum, v) => sum + parseFloat(v.base_fee_paid || 0), 0);
         const overstayFees = completedToday.reduce((sum, v) => {
             const charges = v.overstay_charges || [];
             return sum + charges
@@ -138,11 +138,11 @@ class DashboardService {
         }, 0);
 
         return {
-            active_vehicles: activeCount || 0,
-            completed_today: completedToday.length,
-            base_fees_collected: baseFees.toFixed(2),
+            active_vehicles:         activeCount || 0,
+            completed_today:         completedToday.length,
+            base_fees_collected:     baseFees.toFixed(2),
             overstay_fees_collected: overstayFees.toFixed(2),
-            total_revenue_today: (baseFees + overstayFees).toFixed(2)
+            total_revenue_today:     (baseFees + overstayFees).toFixed(2)
         };
     }
 }
