@@ -5,7 +5,7 @@ services:
     build: .
     container_name: parking-operator-api
     ports:
-      - "4000:4000"
+      - "5000:4000"
     environment:
       - PORT=4000
       - NODE_ENV=production
