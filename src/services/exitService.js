@@ -1,6 +1,6 @@
 const { supabase } = require('../config/database');
 const pricingService = require('./pricingService');
-const { calculateOverstayFee, calculateDurationMinutes } = require('../utils/calculations');
+const { calculateOverstayFee, calculateSlabBasedOverstayFee, calculateDurationMinutes } = require('../utils/calculations');
 const { getCurrentTimestamp } = require('../utils/dateHelpers');
 
 class ExitService {
@@ -15,7 +15,8 @@ class ExitService {
             .from('vehicles')
             .select(`
                 *,
-                created_by_staff:staff!created_by(id, name)
+                created_by_staff:staff!created_by(id, name, organization_id),
+                space:spaces!vehicles_space_fkey(organization_id)
             `)
             .eq('session_id', sessionId)
             .eq('status', 'ACTIVE')
@@ -24,6 +25,9 @@ class ExitService {
         if (fetchError || !vehicle) {
             throw new Error('Active session not found');
         }
+
+        // Get organization ID from space
+        const organizationId = vehicle.space?.organization_id || vehicle.created_by_staff?.organization_id;
 
         // CHANGE: pass vehicle.space_id — this was stamped at entry and never changes
         const pricingRule = await pricingService.getPricingRule(
@@ -39,11 +43,36 @@ class ExitService {
             (vehicle.declared_duration_hours || 0) * 60
         );
 
-        const { overstayMinutes, overstayFee } = calculateOverstayFee(
-            durationMinutes > 0 ? durationMinutes : 0,
-            baseMinutes,
-            pricingRule.extra_hour_rate
-        );
+        let overstayMinutes = 0;
+        let overstayFee = 0;
+        let appliedSlab = null;
+
+        // Check organization's pricing type
+        const pricingType = organizationId
+            ? await pricingService.getOrganizationPricingType(organizationId)
+            : 'hourly';
+
+        if (pricingType === 'slab' && organizationId) {
+            // Use slab-based calculation
+            const slabs = await pricingService.getOverstaySlabs(organizationId);
+            const slabResult = calculateSlabBasedOverstayFee(
+                durationMinutes > 0 ? durationMinutes : 0,
+                baseMinutes,
+                slabs
+            );
+            overstayMinutes = slabResult.overstayMinutes;
+            overstayFee = slabResult.overstayFee;
+            appliedSlab = slabResult.appliedSlab;
+        } else {
+            // Use hourly calculation (default)
+            const hourlyResult = calculateOverstayFee(
+                durationMinutes > 0 ? durationMinutes : 0,
+                baseMinutes,
+                pricingRule.extra_hour_rate
+            );
+            overstayMinutes = hourlyResult.overstayMinutes;
+            overstayFee = hourlyResult.overstayFee;
+        }
 
         const { error: updateError } = await supabase
             .from('vehicles')
@@ -61,14 +90,22 @@ class ExitService {
         let overstayRecord = null;
 
         if (overstayFee > 0) {
+            const insertData = {
+                vehicle_id:       vehicle.id,
+                overstay_minutes: overstayMinutes,
+                fee_amount:       overstayFee,
+                is_collected:     false
+            };
+
+            // Add slab info if slab-based pricing was used
+            if (appliedSlab) {
+                insertData.overstay_slab_id = appliedSlab.id;
+                insertData.slab_hours = appliedSlab.slab_hours;
+            }
+
             const { data: charge, error: chargeError } = await supabase
                 .from('overstay_charges')
-                .insert({
-                    vehicle_id:       vehicle.id,
-                    overstay_minutes: overstayMinutes,
-                    fee_amount:       overstayFee,
-                    is_collected:     false
-                })
+                .insert(insertData)
                 .select()
                 .single();
 

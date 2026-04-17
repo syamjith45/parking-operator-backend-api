@@ -1,6 +1,7 @@
 const { supabase }                = require('../config/database');
 const { calculateDurationMinutes } = require('../utils/calculations');
 const pricingService               = require('./pricingService');
+const cache                        = require('./cacheService');
 
 /**
  * CHANGE: scoping helper replaces the old `staff.role !== 'admin'` check.
@@ -21,6 +22,16 @@ function applyScope(query, context) {
 class DashboardService {
 
     async getActiveVehicles(context = {}) {
+        // Create cache key based on scope
+        const spaceId = context.space?.id || 'global';
+        const cacheKey = `dashboard:active:${spaceId}`;
+
+        // Try cache first
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
         let query = supabase
             .from('vehicles')
             .select(`
@@ -43,14 +54,14 @@ class DashboardService {
         }
 
         // CHANGE: pass spaceId to get the right pricing rules for this space
-        const spaceId      = context.space?.id || null;
-        const pricingRules = await pricingService.getAllPricingRules(spaceId);
+        const resolvedSpaceId = context.space?.id || null;
+        const pricingRules = await pricingService.getAllPricingRules(resolvedSpaceId);
         const rulesMap     = pricingRules.reduce((acc, rule) => {
             acc[rule.vehicle_type] = rule;
             return acc;
         }, {});
 
-        return data.map((vehicle) => {
+        const result = data.map((vehicle) => {
             const pricingRule     = rulesMap[vehicle.vehicle_type];
             const durationMinutes = calculateDurationMinutes(vehicle.entry_time, new Date());
 
@@ -73,6 +84,11 @@ class DashboardService {
                 base_minutes:      baseMinutes
             };
         });
+
+        // Cache the result
+        await cache.set(cacheKey, result, cache.TTL.DASHBOARD_ACTIVE);
+
+        return result;
     }
 
     async getVehicleBySession(sessionId) {
@@ -94,6 +110,16 @@ class DashboardService {
     }
 
     async getTodayStats(context = {}) {
+        // Create cache key based on scope
+        const spaceId = context.space?.id || 'global';
+        const cacheKey = `dashboard:stats:${spaceId}`;
+
+        // Try cache first
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -137,13 +163,18 @@ class DashboardService {
                 .reduce((s, c) => s + parseFloat(c.fee_amount || 0), 0);
         }, 0);
 
-        return {
+        const result = {
             active_vehicles:         activeCount || 0,
             completed_today:         completedToday.length,
             base_fees_collected:     baseFees.toFixed(2),
             overstay_fees_collected: overstayFees.toFixed(2),
             total_revenue_today:     (baseFees + overstayFees).toFixed(2)
         };
+
+        // Cache the result
+        await cache.set(cacheKey, result, cache.TTL.DASHBOARD_STATS);
+
+        return result;
     }
 }
 

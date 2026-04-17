@@ -1,5 +1,9 @@
 const { supabase } = require('../config/database');
 
+// Auth Pattern: Supabase JWT tokens validated via authenticateUser()
+// Used by: GraphQL context middleware + REST endpoints
+// Future: Consider migrating REST endpoints to GraphQL for consistency
+
 const verifyToken = async (token) => {
     return await supabase.auth.getUser(token);
 };
@@ -38,7 +42,7 @@ const authenticateUser = async (authHeader) => {
         user,
         staff:        staffData,
         organization: organization || null,  // null for platform admin
-        space:        space || null,         // null for managers + admins
+        space:        space || null,         // populated for operators and managers, null for admins
         token
     };
 };

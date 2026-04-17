@@ -1,0 +1,228 @@
+{
+  "info": {
+    "_postman_id": "parking-operator-slab-pricing",
+    "name": "Parking Operator - Slab Based Pricing",
+    "description": "Complete collection for testing slab-based overstay pricing in the Parking Operator API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Organization",
+      "item": [
+        {
+          "name": "Get My Organization",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  myOrganization {\n    id\n    name\n    overstay_pricing_type\n    created_at\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Set Organization Pricing Type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SetPricing($org_id: ID!, $pricing_type: String!) {\n  setOrganizationPricingType(id: $org_id, pricing_type: $pricing_type) {\n    id\n    overstay_pricing_type\n  }\n}",
+                "variables": "{\n  \"org_id\": \"{{org_id}}\",\n  \"pricing_type\": \"slab_based\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Overstay Slabs",
+      "item": [
+        {
+          "name": "Get All Overstay Slabs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query GetSlabs($org_id: ID!) {\n  overstaySlabs(organization_id: $org_id) {\n    id\n    organization_id\n    slab_hours\n    slab_fee\n    is_active\n  }\n}",
+                "variables": "{\n  \"org_id\": \"{{org_id}}\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Create Overstay Slab",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CreateSlab($org_id: ID!, $input: OverstaySlabInput!) {\n  createOverstaySlab(organization_id: $org_id, input: $input) {\n    id\n    organization_id\n    slab_hours\n    slab_fee\n    is_active\n  }\n}",
+                "variables": "{\n  \"org_id\": \"{{org_id}}\",\n  \"input\": {\n    \"slab_hours\": 2,\n    \"slab_fee\": 10.00\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Update Overstay Slab",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation UpdateSlab($slab_id: ID!, $input: OverstaySlabInput!) {\n  updateOverstaySlab(id: $slab_id, input: $input) {\n    id\n    slab_hours\n    slab_fee\n    is_active\n  }\n}",
+                "variables": "{\n  \"slab_id\": \"PASTE_SLAB_ID_HERE\",\n  \"input\": {\n    \"slab_hours\": 4,\n    \"slab_fee\": 20.00\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Delete Overstay Slab",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation DeleteSlab($slab_id: ID!) {\n  deleteOverstaySlab(id: $slab_id) {\n    id\n    is_active\n  }\n}",
+                "variables": "{\n  \"slab_id\": \"PASTE_SLAB_ID_HERE\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:4000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "your_jwt_token_here",
+      "type": "string"
+    },
+    {
+      "key": "org_id",
+      "value": "org_123",
+      "type": "string"
+    }
+  ]
+}

@@ -3,6 +3,12 @@ const { gql } = require('apollo-server-express');
 const typeDefs = gql`
   scalar DateTime
 
+  # ─── Role Documentation ────────────────────────────────────────────────────
+  # Valid Staff Roles:
+  # - operator: Can log entries/exits, view own space data
+  # - manager: Can manage staff, pricing, spaces within own organization
+  # - admin: Can manage all organizations and roles (platform-level)
+
   # ─── Existing types (unchanged) ────────────────────────────────────────────
 
   type Staff {
@@ -13,6 +19,10 @@ const typeDefs = gql`
     email: String
     organization_id: ID
     space_id: ID
+    user_id: ID!
+    is_active: Boolean!
+    created_at: DateTime!
+    space: Space
   }
 
   type PricingRule {
@@ -66,6 +76,22 @@ const typeDefs = gql`
     overstay_fee: Float!
     total_amount: Float!
     overstay_record: OverstayCharge
+  }
+
+  type VehicleEntryResult {
+    id: ID!
+    session_id: String!
+    driver_phone: String!
+    vehicle_type: String!
+    vehicle_number: String
+    declared_duration_hours: Int
+    entry_time: DateTime!
+    status: String!
+    base_fee_paid: Float!
+    space_id: ID
+    created_by_staff: Staff
+    slab_id_used: ID
+    pricing_type_used: String
   }
 
   type DashboardStats {
@@ -136,9 +162,20 @@ const typeDefs = gql`
     address: String
     is_active: Boolean!
     owner_id: ID
+    pricing_type: String
+    overstay_pricing_type: String
     created_at: DateTime!
     updated_at: DateTime!
     staff: [Staff]
+  }
+
+  type OverstaySlab {
+    id: ID!
+    organization_id: ID!
+    slab_hours: Int!
+    slab_fee: Float!
+    vehicle_type: String!
+    is_active: Boolean!
   }
 
   type Space {
@@ -158,6 +195,19 @@ const typeDefs = gql`
     active_vehicles: Int!
     completed_today: Int!
     revenue_today: String!
+  }
+
+  type AdminRevenueByOrg {
+    organizationName: String!
+    revenue: Float!
+  }
+
+  type AdminGlobalStats {
+    totalRevenue: Float!
+    activeSessions: Int!
+    completedSessions: Int!
+    utilizationRate: Float!
+    revenueByOrg: [AdminRevenueByOrg!]!
   }
 
   type ReassignmentBlockers {
@@ -193,6 +243,7 @@ const typeDefs = gql`
     vehicle_type: String!
     vehicle_number: String
     declared_duration_hours: Int
+    space_id: ID
   }
 
   input PricingRuleInput {
@@ -216,6 +267,12 @@ const typeDefs = gql`
     email: String
     address: String
     is_active: Boolean
+  }
+
+  input OverstaySlabInput {
+    slab_hours: Int!
+    slab_fee: Float!
+    vehicle_type: String
   }
 
   input CreateSpaceInput {
@@ -269,9 +326,19 @@ const typeDefs = gql`
     organizations: [Organization!]!
     myOrganization: Organization
     orgStats(id: ID): OrgStats!
+    adminGlobalStats(
+      organization_id: String
+      start_date: DateTime
+      end_date: DateTime
+      vehicle_type: String
+    ): AdminGlobalStats!
+
+    # Overstay Slabs (NEW)
+    overstaySlabs(organization_id: ID!, vehicle_type: String): [OverstaySlab]!
 
     # Spaces (NEW)
     spaces(organization_id: ID!): [Space!]!
+    mySpaces: [Space!]!
     space(id: ID!): Space
     spaceOperators(space_id: ID!): [Staff!]!
     reassignmentBlockers(staff_id: ID!): ReassignmentBlockers!
@@ -281,7 +348,7 @@ const typeDefs = gql`
 
   type Mutation {
     # Entry
-    logVehicleEntry(input: VehicleEntryInput!): Vehicle!
+    logVehicleEntry(input: VehicleEntryInput!): VehicleEntryResult!
 
     # Exit
     processVehicleExit(session_id: String!): ExitResult!
@@ -296,6 +363,12 @@ const typeDefs = gql`
     createOrganization(input: CreateOrganizationInput!): Organization!
     updateOrganization(id: ID!, input: UpdateOrganizationInput!): Organization!
     deactivateOrganization(id: ID!): Organization!
+    setOrganizationPricingType(id: ID!, pricing_type: String!): Organization!
+
+    # Overstay Slabs (NEW)
+    createOverstaySlab(organization_id: ID!, input: OverstaySlabInput!): OverstaySlab!
+    updateOverstaySlab(id: ID!, input: OverstaySlabInput!): OverstaySlab!
+    deleteOverstaySlab(id: ID!): OverstaySlab!
 
     # Spaces (NEW)
     createSpace(input: CreateSpaceInput!): Space!

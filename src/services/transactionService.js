@@ -1,7 +1,8 @@
 const { supabase }                                       = require('../config/database');
 const pricingService                                     = require('./pricingService');
-const { calculateOverstayFee, calculateDurationMinutes } = require('../utils/calculations');
+const { calculateOverstayFee, calculateSlabBasedOverstayFee, calculateDurationMinutes } = require('../utils/calculations');
 const { getCurrentTimestamp }                            = require('../utils/dateHelpers');
+const cache                                              = require('./cacheService');
 
 class TransactionService {
 
@@ -18,6 +19,17 @@ class TransactionService {
         endDate,
         search
     }, context = {}) {
+
+        // Create cache key based on all filter parameters
+        const { staff, organization, space } = context;
+        const spaceId = space?.id || 'global';
+        const cacheKey = `transactions:${spaceId}:${page}:${pageSize}:${status || 'all'}:${vehicleType || 'all'}:${startDate || 'none'}:${endDate || 'none'}:${search || 'none'}`;
+
+        // Try cache first
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
 
         let query = supabase
             .from('vehicles')
@@ -38,7 +50,6 @@ class TransactionService {
         }
 
         // CHANGE: space/org scoping replaces old created_by filter
-        const { staff, organization, space } = context;
         if (staff && staff.role !== 'admin') {
             if (staff.role === 'operator' && space) {
                 query = query.eq('space_id', space.id);
@@ -57,13 +68,25 @@ class TransactionService {
             throw new Error(`Failed to fetch transaction history: ${error.message}`);
         }
 
-        // CHANGE: pass spaceId to get correct pricing rules for this space
-        const spaceId           = space?.id || null;
-        const pricingRulesArray = await pricingService.getAllPricingRules(spaceId);
+        // CHANGE: pass spaceId to get correct pricing rules for this space (now uses cache)
+        const resolvedSpaceId = space?.id || null;
+        const pricingRulesArray = await pricingService.getAllPricingRules(resolvedSpaceId);
         const pricingRulesMap   = {};
         pricingRulesArray.forEach(rule => {
             pricingRulesMap[rule.vehicle_type.toLowerCase()] = rule;
         });
+
+        // Get organization ID for slab-based pricing
+        const organizationId = organization?.id || space?.organization_id || null;
+        let pricingType = 'hourly';
+        let slabs = [];
+
+        if (organizationId) {
+            pricingType = await pricingService.getOrganizationPricingType(organizationId);
+            if (pricingType === 'slab') {
+                slabs = await pricingService.getOverstaySlabs(organizationId);
+            }
+        }
 
         const transactions = vehicles.map(vehicle => {
             const endTime         = vehicle.exit_time || getCurrentTimestamp();
@@ -80,13 +103,26 @@ class TransactionService {
                     rule.base_hours * 60,
                     (vehicle.declared_duration_hours || 0) * 60
                 );
-                const overstayDetails = calculateOverstayFee(
-                    durationMinutes > 0 ? durationMinutes : 0,
-                    baseMinutes,
-                    rule.extra_hour_rate
-                );
-                overstayMinutes     = overstayDetails.overstayMinutes;
-                computedOverstayFee = overstayDetails.overstayFee;
+
+                if (pricingType === 'slab' && slabs.length > 0) {
+                    // Use slab-based calculation
+                    const slabResult = calculateSlabBasedOverstayFee(
+                        durationMinutes > 0 ? durationMinutes : 0,
+                        baseMinutes,
+                        slabs
+                    );
+                    overstayMinutes     = slabResult.overstayMinutes;
+                    computedOverstayFee = slabResult.overstayFee;
+                } else {
+                    // Use hourly calculation (default)
+                    const overstayDetails = calculateOverstayFee(
+                        durationMinutes > 0 ? durationMinutes : 0,
+                        baseMinutes,
+                        rule.extra_hour_rate
+                    );
+                    overstayMinutes     = overstayDetails.overstayMinutes;
+                    computedOverstayFee = overstayDetails.overstayFee;
+                }
             }
 
             return {
@@ -99,13 +135,18 @@ class TransactionService {
             };
         });
 
-        return {
+        const result = {
             records:     transactions,
             total_count: count || 0,
             page,
             page_size:   pageSize,
             total_pages: Math.ceil((count || 0) / pageSize)
         };
+
+        // Cache the result
+        await cache.set(cacheKey, result, cache.TTL.TRANSACTIONS);
+
+        return result;
     }
 }
 

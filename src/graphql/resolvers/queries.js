@@ -5,7 +5,7 @@ const transactionService = require('../../services/transactionService');
 const orgService         = require('../../services/organizationService');   // NEW
 const spaceService       = require('../../services/spaceService');           // NEW
 const { supabase }       = require('../../config/database');
-const { requireRole, requireSameOrg } = require('../../middleware/auth');
+const { requireRole, requireSameOrg, requireAuth } = require('../../middleware/auth');
 
 const queries = {
 
@@ -16,7 +16,8 @@ const queries = {
         return await dashboardService.getActiveVehicles(context);
     },
 
-    getVehicleBySession: async (_, { session_id }) => {
+    getVehicleBySession: async (_, { session_id }, context) => {
+        requireAuth(context);
         return await dashboardService.getVehicleBySession(session_id);
     },
 
@@ -29,10 +30,18 @@ const queries = {
 
     // CHANGE: pass context.space?.id for scoped pricing
     pricingRules: async (_, __, context) => {
+        // Managers can access pricing rules without space assignment
+        if (!context.space && context.staff?.role === 'operator') {
+            throw new Error('Operator must be assigned to a space');
+        }
         return await pricingService.getAllPricingRules(context.space?.id);
     },
 
     getPricingRule: async (_, { vehicle_type }, context) => {
+        // Managers can access pricing rules without space assignment
+        if (!context.space && context.staff?.role === 'operator') {
+            throw new Error('Operator must be assigned to a space');
+        }
         return await pricingService.getPricingRule(vehicle_type, context.space?.id);
     },
 
@@ -40,17 +49,26 @@ const queries = {
 
     // CHANGE: pass full context as third arg
     revenueSummary: async (_, { start_date, end_date }, context) => {
+        // Managers can access revenue data without space assignment
+        if (!context.space && context.staff?.role === 'operator') {
+            throw new Error('Operator must be assigned to a space');
+        }
         return await revenueService.getRevenueSummary(start_date, end_date, context);
     },
 
     // CHANGE: pass full context
     pendingOverstayCharges: async (_, __, context) => {
+        // Managers can access overstay charges without space assignment
+        if (!context.space && context.staff?.role === 'operator') {
+            throw new Error('Operator must be assigned to a space');
+        }
         return await revenueService.getPendingOverstayCharges(context);
     },
 
     // ─── Staff ────────────────────────────────────────────────────────────────
 
-    staff: async (_, { id }) => {
+    staff: async (_, { id }, context) => {
+        requireAuth(context);
         const { data, error } = await supabase
             .from('staff')
             .select('*')
@@ -75,10 +93,14 @@ const queries = {
         };
     },
 
-    // ─── Transactions ─────────────────────────────────────────────────────────
+     // ─── Transactions ─────────────────────────────────────────────────────────
 
     // CHANGE: pass full context instead of context.staff
     transactionHistory: async (_, { page, page_size, status, vehicle_type, start_date, end_date, search }, context) => {
+        // Managers can access transaction history without space assignment
+        if (!context.space && context.staff?.role === 'operator') {
+            throw new Error('Operator must be assigned to a space');
+        }
         return await transactionService.getTransactionHistory({
             page:        page       || 1,
             pageSize:    page_size  || 20,
@@ -114,6 +136,16 @@ const queries = {
         return await orgService.getOrgStats(orgId);
     },
 
+    adminGlobalStats: async (_, { organization_id, start_date, end_date, vehicle_type }, context) => {
+        requireRole(context, ['admin']);
+        return await orgService.getAdminGlobalStats({
+            organizationId: organization_id || null,
+            startDate: start_date || null,
+            endDate: end_date || null,
+            vehicleType: vehicle_type || null
+        });
+    },
+
     // ─── Spaces (NEW) ─────────────────────────────────────────────────────────
 
     spaces: async (_, { organization_id }, context) => {
@@ -121,7 +153,15 @@ const queries = {
         return await spaceService.getSpacesByOrg(organization_id);
     },
 
-    space: async (_, { id }) => {
+    mySpaces: async (_, __, context) => {
+        if (!context.organization) {
+            throw new Error('No organization associated with your account');
+        }
+        return await spaceService.getSpacesByOrg(context.organization.id);
+    },
+
+    space: async (_, { id }, context) => {
+        requireAuth(context);
         return await spaceService.getSpace(id);
     },
 
@@ -132,6 +172,13 @@ const queries = {
     reassignmentBlockers: async (_, { staff_id }, context) => {
         requireRole(context, ['admin', 'manager']);
         return await spaceService.getReassignmentBlockers(staff_id);
+    },
+
+    // ─── Overstay Slabs (NEW) ─────────────────────────────────────────────────
+
+    overstaySlabs: async (_, { organization_id, vehicle_type }, context) => {
+        requireSameOrg(context, organization_id);
+        return await pricingService.getOverstaySlabs(organization_id, vehicle_type);
     }
 };
 

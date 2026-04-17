@@ -1,4 +1,5 @@
 const { supabase } = require('../config/database');
+const cache        = require('./cacheService');
 
 /**
  * CHANGE: scoping helper for revenue queries.
@@ -24,6 +25,16 @@ class RevenueService {
 
         start.setHours(0, 0, 0, 0);
         end.setHours(23, 59, 59, 999);
+
+        // Create cache key based on date range and scope
+        const spaceId = context.space?.id || 'global';
+        const cacheKey = `revenue:${spaceId}:${start.toISOString()}:${end.toISOString()}`;
+
+        // Try cache first
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
 
         let query = supabase
             .from('vehicles')
@@ -74,7 +85,7 @@ class RevenueService {
             return acc;
         }, {});
 
-        return {
+        const result = {
             period: {
                 start: start.toISOString(),
                 end:   end.toISOString()
@@ -90,6 +101,11 @@ class RevenueService {
                 revenue:      d.revenue.toFixed(2)
             }))
         };
+
+        // Cache the result
+        await cache.set(cacheKey, result, cache.TTL.REVENUE);
+
+        return result;
     }
 
     /**

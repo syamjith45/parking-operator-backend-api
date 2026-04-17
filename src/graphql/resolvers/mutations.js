@@ -3,6 +3,8 @@ const exitService    = require('../../services/exitService');
 const pricingService = require('../../services/pricingService');
 const orgService     = require('../../services/organizationService');  // NEW
 const spaceService   = require('../../services/spaceService');          // NEW
+const cache          = require('../../services/cacheService');
+const { supabase }   = require('../../config/database');
 const { requireRole, requireSameOrg } = require('../../middleware/auth');
 
 const mutations = {
@@ -11,34 +13,97 @@ const mutations = {
 
     logVehicleEntry: async (_, { input }, context) => {
         requireRole(context, ['operator', 'admin', 'manager']);
-        return await entryService.logEntry({
+        
+        let spaceId = null;
+        
+        if (context.staff.role === 'operator') {
+            // Operators must be assigned to a space; use their assigned space
+            if (!context.space) {
+                throw new Error('Operator must be assigned to a space');
+            }
+            spaceId = context.space.id;
+        } else if (context.staff.role === 'manager') {
+            // Managers must provide space_id in input
+            if (!input.space_id) {
+                throw new Error('Manager must specify a space_id');
+            }
+            spaceId = input.space_id;
+            
+            // Validate the space belongs to manager's organization
+            const { data: space } = await supabase
+                .from('spaces')
+                .select('id, organization_id')
+                .eq('id', spaceId)
+                .eq('organization_id', context.organization.id)
+                .single();
+            
+            if (!space) {
+                throw new Error('Space not found or does not belong to your organization');
+            }
+        } else if (context.staff.role === 'admin') {
+            // Admins can specify space_id from input, or leave it null
+            spaceId = input.space_id || null;
+        }
+        
+        const result = await entryService.logEntry({
             driverPhone:           input.driver_phone,
             vehicleType:           input.vehicle_type,
             vehicleNumber:         input.vehicle_number,
             declaredDurationHours: input.declared_duration_hours || null,
             staffId:               context.staff.id,
-            spaceId:               context.space?.id || null   // CHANGE: pass space from context
+            spaceId:               spaceId
         });
+
+        // Invalidate dashboard caches on new entry
+        if (spaceId) {
+            await cache.invalidateDashboardCache(spaceId);
+        }
+
+        return result;
     },
 
     // ─── Exit ─────────────────────────────────────────────────────────────────
 
     processVehicleExit: async (_, { session_id }, context) => {
         requireRole(context, ['operator', 'admin', 'manager']);
-        return await exitService.processExit(session_id, context.staff.id);
+        // Operators and admins must have space context; managers don't need it
+        if (!context.space && context.staff.role === 'operator') {
+            throw new Error('Operator must be assigned to a space');
+        }
+        const result = await exitService.processExit(session_id, context.staff.id);
+
+        // Invalidate dashboard and revenue caches on exit
+        if (context.space?.id) {
+            await cache.invalidateDashboardCache(context.space.id);
+            await cache.invalidateRevenueCache(context.space.id);
+            await cache.invalidateTransactionCache(context.space.id);
+        }
+
+        return result;
     },
 
     // ─── Payment ──────────────────────────────────────────────────────────────
 
     collectOverstayPayment: async (_, { overstay_charge_id }, context) => {
         requireRole(context, ['operator', 'admin', 'manager']);
-        return await exitService.collectOverstayPayment(overstay_charge_id, context.staff.id);
+        const result = await exitService.collectOverstayPayment(overstay_charge_id, context.staff.id);
+
+        // Invalidate revenue caches on payment collection
+        if (context.space?.id) {
+            await cache.invalidateRevenueCache(context.space.id);
+        }
+
+        return result;
     },
 
     // ─── Pricing ──────────────────────────────────────────────────────────────
 
     updatePricingRules: async (_, { rules }, context) => {
         requireRole(context, ['admin', 'manager']);
+        // Org-level pricing check: if no space context, verify org ownership
+        if (!context.space && context.staff.role !== 'admin') {
+            requireSameOrg(context, context.organization?.id || null);
+        }
 
         const updatedRules = [];
         for (const rule of rules) {
@@ -111,6 +176,36 @@ const mutations = {
     reassignOperator: async (_, { staff_id, space_id, force }, context) => {
         requireRole(context, ['admin', 'manager']);
         return await spaceService.reassignOperator(staff_id, space_id, { force: force || false });
+    },
+
+    // ─── Overstay Slabs (NEW) ─────────────────────────────────────────────────
+
+    setOrganizationPricingType: async (_, { id, pricing_type }, context) => {
+        requireRole(context, ['admin', 'manager']);
+        requireSameOrg(context, id);
+        return await pricingService.setOrganizationPricingType(id, pricing_type);
+    },
+
+    createOverstaySlab: async (_, { organization_id, input }, context) => {
+        requireRole(context, ['admin', 'manager']);
+        requireSameOrg(context, organization_id);
+        return await pricingService.createOverstaySlab(organization_id, input);
+    },
+
+    updateOverstaySlab: async (_, { id, input }, context) => {
+        requireRole(context, ['admin', 'manager']);
+        // Get the slab to check organization ownership
+        const slab = await pricingService.getSlabById(id);
+        requireSameOrg(context, slab.organization_id);
+        return await pricingService.updateOverstaySlab(id, input);
+    },
+
+    deleteOverstaySlab: async (_, { id }, context) => {
+        requireRole(context, ['admin', 'manager']);
+        // Get the slab to check organization ownership
+        const slab = await pricingService.getSlabById(id);
+        requireSameOrg(context, slab.organization_id);
+        return await pricingService.deleteOverstaySlab(id);
     }
 };
 

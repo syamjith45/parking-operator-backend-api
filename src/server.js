@@ -10,7 +10,11 @@ const { supabase }         = require('./config/database');
 async function startServer() {
     const app = express();
 
-    app.use(cors());
+    const corsOptions = {
+        origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : '*',
+        credentials: true
+    };
+    app.use(cors(corsOptions));
     app.use(express.json());
 
     // Health check — unchanged
@@ -66,12 +70,12 @@ async function startServer() {
             }
         }
 
-        // Operators must have a space; managers must not
+        // Only operators must have a space_id; managers and admins must not
         if (role === 'operator' && !space_id) {
             return res.status(400).json({ error: 'Operators require a space_id' });
         }
-        if (role === 'manager' && space_id) {
-            return res.status(400).json({ error: 'Managers should not be assigned to a space' });
+        if ((role === 'manager' || role === 'admin') && space_id) {
+            return res.status(400).json({ error: `${role === 'manager' ? 'Managers' : 'Admins'} should not be assigned to a space` });
         }
 
         try {
@@ -148,6 +152,11 @@ async function startServer() {
     });
 
     // ─── Apollo Server ────────────────────────────────────────────────────────
+
+    // Error Response Formats:
+    // - REST: { error: 'message' }
+    // - GraphQL: { errors: [{ message: 'message', code: 'CODE' }] }
+    // Note: Standardization planned for future refactor
 
     const server = new ApolloServer({
         typeDefs,

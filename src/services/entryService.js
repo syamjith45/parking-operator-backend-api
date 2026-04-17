@@ -14,6 +14,7 @@ class EntryService {
     /**
      * Log a vehicle entry.
      * CHANGE: now accepts spaceId from context and stamps it on the vehicle row.
+     * CHANGE: uses slab-based pricing if configured, otherwise falls back to pricing rules.
      */
     async logEntry(input) {
         const {
@@ -30,20 +31,58 @@ class EntryService {
         }
 
         if (!validateVehicleType(vehicleType)) {
-            throw new Error('Invalid vehicle type. Must be: bike, car, or truck');
+            throw new Error('Invalid vehicle type. Must be: bike, car, truck, four_wheeler, two_wheeler, or van');
         }
 
         const cleanPhone         = sanitizeInput(driverPhone);
         const cleanVehicleType   = vehicleType.toLowerCase();
         const cleanVehicleNumber = vehicleNumber ? sanitizeInput(vehicleNumber) : null;
 
-        // CHANGE: pass spaceId so pricing is fetched for this specific space
-        const pricingRule = await pricingService.getPricingRule(cleanVehicleType, spaceId);
+        // Get organization from staff
+        const { data: staffData } = await supabase
+            .from('staff')
+            .select('organization_id')
+            .eq('id', staffId)
+            .single();
 
-        let baseFee = pricingRule.base_fee;
-        if (declaredDurationHours && declaredDurationHours > pricingRule.base_hours) {
-            const extraHours = declaredDurationHours - pricingRule.base_hours;
-            baseFee = pricingRule.base_fee + (extraHours * pricingRule.extra_hour_rate);
+        if (!staffData?.organization_id) {
+            throw new Error('Cannot determine organization for staff');
+        }
+
+        // Check if organization uses slab-based pricing
+        const organizationPricingType = await pricingService.getOrganizationPricingType(staffData.organization_id);
+        
+        let baseFee = 0;
+        let slabIdUsed = null;
+
+        if (organizationPricingType === 'slab_based' && declaredDurationHours) {
+            // Use slab-based pricing - filtered by vehicle_type
+            const slabs = await pricingService.getOverstaySlabs(staffData.organization_id, cleanVehicleType);
+            
+            if (slabs.length === 0) {
+                throw new Error(`No pricing slabs configured for ${cleanVehicleType}`);
+            }
+
+            // Find matching slab: first slab where slab_hours >= declared_duration_hours
+            let matchedSlab = slabs.find(s => s.slab_hours >= declaredDurationHours);
+            
+            // Fallback: use highest slab if no match found
+            if (!matchedSlab) {
+                matchedSlab = slabs.reduce((max, s) => 
+                    s.slab_hours > max.slab_hours ? s : max
+                );
+            }
+
+            baseFee = parseFloat(matchedSlab.slab_fee);
+            slabIdUsed = matchedSlab.id;
+        } else {
+            // Fall back to pricing rules (hourly rate system)
+            const pricingRule = await pricingService.getPricingRule(cleanVehicleType, spaceId);
+            baseFee = pricingRule.base_fee;
+            if (declaredDurationHours && declaredDurationHours > pricingRule.base_hours) {
+                const extraHours = declaredDurationHours - pricingRule.base_hours;
+                baseFee = pricingRule.base_fee + (extraHours * pricingRule.extra_hour_rate);
+            }
         }
 
         const { data: staff, error: staffError } = await supabase
@@ -91,7 +130,8 @@ class EntryService {
 
         return {
             ...vehicle,
-            pricing_rule: pricingRule
+            slab_id_used: slabIdUsed,
+            pricing_type_used: organizationPricingType
         };
     }
 

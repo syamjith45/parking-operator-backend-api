@@ -4,6 +4,10 @@ require('dotenv').config();
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
+// Token Strategy: No caching currently. Each request validates token with Supabase.
+// Future: Implement Redis caching with TTL for performance improvement.
+// Cache invalidation: Supabase calls logout → token invalidated immediately
+
 // Helper to validate URL
 const isValidUrl = (string) => {
     try {
@@ -21,6 +25,7 @@ if (!supabaseUrl || !supabaseKey || !isValidUrl(supabaseUrl)) {
         console.error('CRITICAL: Missing or invalid Supabase credentials in production environment.');
         process.exit(1);
     } else {
+        console.error('⚠️ WARNING: Supabase credentials not found. Using placeholder client for development only.');
         console.warn('Missing or invalid Supabase credentials in environment variables. Using placeholder client for development.');
     }
 }
