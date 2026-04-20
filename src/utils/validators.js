@@ -4,7 +4,8 @@ const validatePhoneNumber = (phone) => {
 };
 
 const validateVehicleType = (type) => {
-    const validTypes = ['bike', 'car', 'truck', 'four_wheeler', 'two_wheeler', 'van'];
+    // Valid types per vehicle_types master table
+    const validTypes = ['two_wheeler', 'four_wheeler', 'van', 'truck', 'car_special_care'];
     return validTypes.includes(type.toLowerCase());
 };
 

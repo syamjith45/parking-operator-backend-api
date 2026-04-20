@@ -61,16 +61,40 @@ class SpaceService {
         return data;
     }
 
-    async getSpaceOperators(spaceId) {
+    async getOrganizationOperators(organizationId) {
         const { data, error } = await supabase
             .from('staff')
-            .select('id, name, role, phone, email, is_active')
-            .eq('space_id', spaceId)
+            .select('id, name, role, phone, email, is_active, space_id, organization_id')
+            .eq('organization_id', organizationId)
             .eq('role', 'operator')
+            .eq('is_active', true)
+            .order('name');
+
+        if (error) throw new Error('Failed to fetch operators for organization');
+        return data || [];
+    }
+
+    async getSpaceOperators(spaceId) {
+        const { data: space, error: spaceError } = await supabase
+            .from('spaces')
+            .select('id, organization_id')
+            .eq('id', spaceId)
+            .single();
+
+        if (spaceError || !space) throw new Error('Space not found');
+
+        const { data, error } = await supabase
+            .from('staff')
+            .select('id, name, role, phone, email, is_active, space_id')
+            .eq('organization_id', space.organization_id)
+            .in('role', ['operator', 'manager'])
+            .eq('is_active', true)
             .order('name');
 
         if (error) throw new Error('Failed to fetch operators for space');
-        return data || [];
+
+        // Show operators assigned to this space and managers from the same organization.
+        return (data || []).filter(staff => staff.role === 'manager' || staff.space_id === spaceId);
     }
 
     /**

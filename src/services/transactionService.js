@@ -78,12 +78,12 @@ class TransactionService {
 
         // Get organization ID for slab-based pricing
         const organizationId = organization?.id || space?.organization_id || null;
-        let pricingType = 'hourly';
+        let pricingTypeObj = { code: 'hourly' };
         let slabs = [];
 
         if (organizationId) {
-            pricingType = await pricingService.getOrganizationPricingType(organizationId);
-            if (pricingType === 'slab') {
+            pricingTypeObj = await pricingService.getOrganizationPricingType(organizationId);
+            if (pricingTypeObj.code === 'slab_based') {
                 slabs = await pricingService.getOverstaySlabs(organizationId);
             }
         }
@@ -104,7 +104,7 @@ class TransactionService {
                     (vehicle.declared_duration_hours || 0) * 60
                 );
 
-                if (pricingType === 'slab' && slabs.length > 0) {
+                if (pricingTypeObj.code === 'slab_based' && slabs.length > 0) {
                     // Use slab-based calculation
                     const slabResult = calculateSlabBasedOverstayFee(
                         durationMinutes > 0 ? durationMinutes : 0,

@@ -104,7 +104,7 @@ $ curl http://localhost:4000/graphql -X POST \\
   -H "Authorization: Bearer token_orgA" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "query": "mutation { updatePricingRules(rules: [{vehicle_type:\\"car\\", base_fee: 50}]) { id } }"
+    "query": "mutation { updatePricingRules(rules: [{vehicle_type:\\"four_wheeler\\", base_fee: 50}]) { id } }"
   }'
 
 ✅ PASS: Returns 403 error "Access denied: resource belongs to a different organization"
@@ -126,7 +126,7 @@ $ curl http://localhost:4000/graphql -X POST \\
   -H "Authorization: Bearer operator_token" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "query": "mutation { logVehicleEntry(input: {driver_phone:\\"555-1234\\", vehicle_type:\\"car\\"}) { id } }"
+    "query": "mutation { logVehicleEntry(input: {driver_phone:\\"555-1234\\", vehicle_type:\\"four_wheeler\\"}) { id } }"
   }'
 
 ✅ PASS: Returns error "Space context required for non-admin users"

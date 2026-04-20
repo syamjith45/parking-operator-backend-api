@@ -153,6 +153,20 @@ const typeDefs = gql`
 
   # ─── NEW types ──────────────────────────────────────────────────────────────
 
+  type PricingType {
+    id: ID!
+    code: String!
+    label: String!
+    is_active: Boolean!
+    created_at: DateTime!
+  }
+
+  type VehicleType {
+    id: ID!
+    code: String!
+    label: String!
+  }
+
   type Organization {
     id: ID!
     name: String!
@@ -162,8 +176,8 @@ const typeDefs = gql`
     address: String
     is_active: Boolean!
     owner_id: ID
-    pricing_type: String
-    overstay_pricing_type: String
+    pricing_type_id: ID
+    pricing_type: PricingType
     created_at: DateTime!
     updated_at: DateTime!
     staff: [Staff]
@@ -289,6 +303,15 @@ const typeDefs = gql`
     is_active: Boolean
   }
 
+  input CreateOperatorInput {
+    email: String!
+    password: String!
+    name: String!
+    phone: String
+    space_id: ID!
+    organization_id: ID
+  }
+
   # ─── Queries ────────────────────────────────────────────────────────────────
 
   type Query {
@@ -300,6 +323,8 @@ const typeDefs = gql`
     # Pricing
     pricingRules: [PricingRule]!
     getPricingRule(vehicle_type: String!): PricingRule
+    pricingTypes: [PricingType!]!
+    vehicleTypes: [VehicleType!]!
 
     # Revenue
     revenueSummary(start_date: DateTime, end_date: DateTime): RevenueSummary!
@@ -341,6 +366,7 @@ const typeDefs = gql`
     mySpaces: [Space!]!
     space(id: ID!): Space
     spaceOperators(space_id: ID!): [Staff!]!
+    organizationOperators(organization_id: ID!): [Staff!]!
     reassignmentBlockers(staff_id: ID!): ReassignmentBlockers!
   }
 
@@ -363,7 +389,7 @@ const typeDefs = gql`
     createOrganization(input: CreateOrganizationInput!): Organization!
     updateOrganization(id: ID!, input: UpdateOrganizationInput!): Organization!
     deactivateOrganization(id: ID!): Organization!
-    setOrganizationPricingType(id: ID!, pricing_type: String!): Organization!
+    setOrganizationPricingType(id: ID!, pricing_type_id: ID!): Organization!
 
     # Overstay Slabs (NEW)
     createOverstaySlab(organization_id: ID!, input: OverstaySlabInput!): OverstaySlab!
@@ -373,6 +399,7 @@ const typeDefs = gql`
     # Spaces (NEW)
     createSpace(input: CreateSpaceInput!): Space!
     updateSpace(id: ID!, input: UpdateSpaceInput!): Space!
+    createOperator(input: CreateOperatorInput!): Staff!
     assignOperatorToSpace(staff_id: ID!, space_id: ID!): Staff!
     reassignOperator(staff_id: ID!, space_id: ID!, force: Boolean): ReassignResult!
   }

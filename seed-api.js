@@ -1,12 +1,11 @@
 const { supabase } = require('./src/config/database');
 
 const pricingRules = [
-    { vehicle_type: 'car', base_fee: 10.0, base_hours: 2, extra_hour_rate: 5.0, is_active: true },
-    { vehicle_type: 'bike', base_fee: 5.0, base_hours: 2, extra_hour_rate: 2.0, is_active: true },
-    { vehicle_type: 'truck', base_fee: 20.0, base_hours: 2, extra_hour_rate: 10.0, is_active: true },
-    { vehicle_type: 'four_wheeler', base_fee: 12.0, base_hours: 2, extra_hour_rate: 6.0, is_active: true },
+    { vehicle_type: 'four_wheeler', base_fee: 10.0, base_hours: 2, extra_hour_rate: 5.0, is_active: true },
     { vehicle_type: 'two_wheeler', base_fee: 5.0, base_hours: 2, extra_hour_rate: 2.0, is_active: true },
-    { vehicle_type: 'van', base_fee: 25.0, base_hours: 2, extra_hour_rate: 12.0, is_active: true }
+    { vehicle_type: 'truck', base_fee: 20.0, base_hours: 2, extra_hour_rate: 10.0, is_active: true },
+    { vehicle_type: 'van', base_fee: 25.0, base_hours: 2, extra_hour_rate: 12.0, is_active: true },
+    { vehicle_type: 'car_special_care', base_fee: 15.0, base_hours: 2, extra_hour_rate: 7.0, is_active: true }
 ];
 
 async function seedData() {

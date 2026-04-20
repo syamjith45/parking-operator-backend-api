@@ -1,4 +1,4 @@
-const { supabase } = require('../config/database');
+const { supabase, supabaseAdmin } = require('../config/database');
 const cache = require('./cacheService');
 
 class PricingService {
@@ -9,15 +9,8 @@ class PricingService {
 
     getVehicleTypeCandidates(vehicleType) {
         const normalizedType = this.normalizeVehicleType(vehicleType);
-
-        if (normalizedType === 'four_wheeler' || normalizedType === 'car') {
-            return ['four_wheeler', 'car'];
-        }
-
-        if (normalizedType === 'two_wheeler' || normalizedType === 'bike') {
-            return ['two_wheeler', 'bike'];
-        }
-
+        // Return only the normalized type (no mapping between bike→two_wheeler, car→four_wheeler)
+        // The database now enforces correct vehicle_type codes via FK constraints
         return [normalizedType];
     }
 
@@ -277,12 +270,64 @@ class PricingService {
     }
 
     /**
-     * Get organization's overstay pricing type (hourly or slab).
+     * Get all active pricing types.
+     */
+    async getAllPricingTypes() {
+        const cacheKey = 'pricing_types:all';
+        
+        // Try cache first
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const { data, error } = await supabaseAdmin
+            .from('pricing_types')
+            .select('*')
+            .eq('is_active', true)
+            .order('code');
+
+        if (error) {
+            throw new Error('Failed to fetch pricing types');
+        }
+
+        // Cache the result
+        await cache.set(cacheKey, data || [], cache.TTL.PRICING);
+        return data || [];
+    }
+
+    /**
+     * Get pricing type by ID.
+     */
+    async getPricingTypeById(id) {
+        const cacheKey = `pricing_type:${id}`;
+        
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const { data, error } = await supabaseAdmin
+            .from('pricing_types')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error || !data) {
+            throw new Error('Pricing type not found');
+        }
+
+        await cache.set(cacheKey, data, cache.TTL.PRICING);
+        return data;
+    }
+
+    /**
+     * Get organization's pricing type ID and details.
      */
     async getOrganizationPricingType(organizationId) {
         const { data, error } = await supabase
             .from('organizations')
-            .select('overstay_pricing_type')
+            .select('pricing_type_id')
             .eq('id', organizationId)
             .maybeSingle();
 
@@ -290,7 +335,19 @@ class PricingService {
             throw new Error('Failed to fetch organization pricing type');
         }
 
-        return data?.overstay_pricing_type || 'hourly';
+        // Return the pricing_type_id, default to hourly pricing type
+        if (data?.pricing_type_id) {
+            return await this.getPricingTypeById(data.pricing_type_id);
+        }
+
+        // Default fallback to hourly pricing type if not set
+        const { data: hourlyType } = await supabaseAdmin
+            .from('pricing_types')
+            .select('*')
+            .eq('code', 'hourly')
+            .single();
+
+        return hourlyType || { code: 'hourly' };
     }
 
     /**
@@ -392,12 +449,15 @@ class PricingService {
     }
 
     /**
-     * Set organization's pricing type.
+     * Set organization's pricing type by ID.
      */
-    async setOrganizationPricingType(id, pricingType) {
+    async setOrganizationPricingType(id, pricingTypeId) {
+        // Verify the pricing type exists
+        await this.getPricingTypeById(pricingTypeId);
+
         const { data, error } = await supabase
             .from('organizations')
-            .update({ overstay_pricing_type: pricingType })
+            .update({ pricing_type_id: pricingTypeId })
             .eq('id', id)
             .select()
             .single();

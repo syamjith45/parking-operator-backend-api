@@ -31,7 +31,7 @@ class EntryService {
         }
 
         if (!validateVehicleType(vehicleType)) {
-            throw new Error('Invalid vehicle type. Must be: bike, car, truck, four_wheeler, two_wheeler, or van');
+            throw new Error('Invalid vehicle type. Must be: two_wheeler, four_wheeler, van, truck, or car_special_care');
         }
 
         const cleanPhone         = sanitizeInput(driverPhone);
@@ -54,8 +54,9 @@ class EntryService {
         
         let baseFee = 0;
         let slabIdUsed = null;
+        const pricingTypeUsed = organizationPricingType.code || 'hourly';
 
-        if (organizationPricingType === 'slab_based' && declaredDurationHours) {
+        if (organizationPricingType.code === 'slab_based' && declaredDurationHours) {
             // Use slab-based pricing - filtered by vehicle_type
             const slabs = await pricingService.getOverstaySlabs(staffData.organization_id, cleanVehicleType);
             
@@ -131,7 +132,7 @@ class EntryService {
         return {
             ...vehicle,
             slab_id_used: slabIdUsed,
-            pricing_type_used: organizationPricingType
+            pricing_type_used: pricingTypeUsed
         };
     }
 

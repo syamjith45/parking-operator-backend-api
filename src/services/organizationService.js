@@ -1,4 +1,4 @@
-const { supabase } = require('../config/database');
+const { supabase, supabaseAdmin } = require('../config/database');
 
 class OrganizationService {
 
@@ -10,14 +10,8 @@ class OrganizationService {
         const normalizedType = this.normalizeVehicleType(vehicleType);
         if (!normalizedType) return [];
 
-        if (normalizedType === 'four_wheeler' || normalizedType === 'car') {
-            return ['four_wheeler', 'car'];
-        }
-
-        if (normalizedType === 'two_wheeler' || normalizedType === 'bike') {
-            return ['two_wheeler', 'bike'];
-        }
-
+        // Return only the normalized type (no mapping between bike→two_wheeler, car→four_wheeler)
+        // The database now enforces correct vehicle_type codes via FK constraints
         return [normalizedType];
     }
 
@@ -30,6 +24,32 @@ class OrganizationService {
 
         if (error || !data) throw new Error('Organization not found');
         return data;
+    }
+
+    async getOrganizationWithPricingType(orgId) {
+        const organization = await this.getOrganization(orgId);
+
+        if (!organization?.pricing_type_id) {
+            return {
+                ...organization,
+                pricing_type: null
+            };
+        }
+
+        const { data: pricingType, error: pricingTypeError } = await supabaseAdmin
+            .from('pricing_types')
+            .select('id, code, label, is_active, created_at')
+            .eq('id', organization.pricing_type_id)
+            .maybeSingle();
+
+        if (pricingTypeError) {
+            throw new Error('Failed to fetch organization pricing type details');
+        }
+
+        return {
+            ...organization,
+            pricing_type: pricingType || null
+        };
     }
 
     async listOrganizations() {

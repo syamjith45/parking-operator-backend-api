@@ -4,7 +4,7 @@ const pricingService = require('../../services/pricingService');
 const orgService     = require('../../services/organizationService');  // NEW
 const spaceService   = require('../../services/spaceService');          // NEW
 const cache          = require('../../services/cacheService');
-const { supabase }   = require('../../config/database');
+const { supabase, supabaseAdmin } = require('../../config/database');
 const { requireRole, requireSameOrg } = require('../../middleware/auth');
 
 const mutations = {
@@ -167,6 +167,77 @@ const mutations = {
         return await spaceService.updateSpace(id, input);
     },
 
+    createOperator: async (_, { input }, context) => {
+        requireRole(context, ['admin', 'manager']);
+
+        const managerOrgId = context.organization?.id || context.staff?.organization_id || null;
+        let organizationId = input.organization_id || managerOrgId;
+
+        if (context.staff.role === 'manager') {
+            if (!managerOrgId) {
+                throw new Error('Manager is not linked to an organization');
+            }
+            if (input.organization_id && input.organization_id !== managerOrgId) {
+                throw new Error('Managers can only create operators for their own organization');
+            }
+            organizationId = managerOrgId;
+        }
+
+        if (!organizationId) {
+            throw new Error('organization_id is required');
+        }
+
+        if (!input.space_id) {
+            throw new Error('space_id is required for operator creation');
+        }
+
+        const { data: space, error: spaceError } = await supabase
+            .from('spaces')
+            .select('id, organization_id')
+            .eq('id', input.space_id)
+            .single();
+
+        if (spaceError || !space) {
+            throw new Error('Space not found');
+        }
+
+        if (space.organization_id !== organizationId) {
+            throw new Error('Space does not belong to the selected organization');
+        }
+
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+            email: input.email,
+            password: input.password,
+            email_confirm: true
+        });
+
+        if (authError || !authData?.user) {
+            throw new Error(authError?.message || 'Failed to create auth user');
+        }
+
+        const { data: staffData, error: staffError } = await supabase
+            .from('staff')
+            .insert([{
+                user_id: authData.user.id,
+                name: input.name,
+                email: input.email,
+                phone: input.phone || null,
+                role: 'operator',
+                organization_id: organizationId,
+                space_id: input.space_id,
+                is_active: true
+            }])
+            .select()
+            .single();
+
+        if (staffError || !staffData) {
+            await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+            throw new Error('Failed to create operator staff record');
+        }
+
+        return staffData;
+    },
+
     assignOperatorToSpace: async (_, { staff_id, space_id }, context) => {
         requireRole(context, ['admin', 'manager']);
         const result = await spaceService.reassignOperator(staff_id, space_id, { force: false });
@@ -180,10 +251,10 @@ const mutations = {
 
     // ─── Overstay Slabs (NEW) ─────────────────────────────────────────────────
 
-    setOrganizationPricingType: async (_, { id, pricing_type }, context) => {
+    setOrganizationPricingType: async (_, { id, pricing_type_id }, context) => {
         requireRole(context, ['admin', 'manager']);
         requireSameOrg(context, id);
-        return await pricingService.setOrganizationPricingType(id, pricing_type);
+        return await pricingService.setOrganizationPricingType(id, pricing_type_id);
     },
 
     createOverstaySlab: async (_, { organization_id, input }, context) => {

@@ -48,11 +48,11 @@ class ExitService {
         let appliedSlab = null;
 
         // Check organization's pricing type
-        const pricingType = organizationId
+        const pricingTypeObj = organizationId
             ? await pricingService.getOrganizationPricingType(organizationId)
-            : 'hourly';
+            : { code: 'hourly' };
 
-        if (pricingType === 'slab' && organizationId) {
+        if (pricingTypeObj.code === 'slab_based' && organizationId) {
             // Use slab-based calculation
             const slabs = await pricingService.getOverstaySlabs(organizationId);
             const slabResult = calculateSlabBasedOverstayFee(

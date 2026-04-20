@@ -28,7 +28,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "{\n  myOrganization {\n    id\n    name\n    overstay_pricing_type\n    created_at\n  }\n}"
+                "query": "{\n  myOrganization {\n    id\n    name\n    pricing_type_id\n    pricing_type {\n      code\n      label\n    }\n    created_at\n  }\n}"
               }
             },
             "url": {
@@ -57,8 +57,71 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation SetPricing($org_id: ID!, $pricing_type: String!) {\n  setOrganizationPricingType(id: $org_id, pricing_type: $pricing_type) {\n    id\n    overstay_pricing_type\n  }\n}",
-                "variables": "{\n  \"org_id\": \"{{org_id}}\",\n  \"pricing_type\": \"slab_based\"\n}"
+                "query": "mutation SetPricing($org_id: ID!, $pricing_type_id: ID!) {\n  setOrganizationPricingType(id: $org_id, pricing_type_id: $pricing_type_id) {\n    id\n    pricing_type_id\n    pricing_type {\n      code\n      label\n    }\n  }\n}",
+                "variables": "{\n  \"org_id\": \"{{org_id}}\",\n  \"pricing_type_id\": \"{{pricing_type_id}}\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get All Pricing Types",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  pricingTypes {\n    id\n    code\n    label\n    is_active\n    created_at\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pricing Types",
+      "item": [
+        {
+          "name": "Get All Pricing Types (Reference)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  pricingTypes {\n    id\n    code\n    label\n    is_active\n  }\n}"
               }
             },
             "url": {

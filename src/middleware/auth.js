@@ -38,11 +38,20 @@ const authenticateUser = async (authHeader) => {
     // Destructure joined relations out of the staff object
     const { organization, space, ...staffData } = staff;
 
+    // Supabase relation payloads can be object or single-item array depending on embedding shape.
+    const normalizedOrganization = Array.isArray(organization)
+        ? (organization[0] || null)
+        : (organization || null);
+
+    const normalizedSpace = Array.isArray(space)
+        ? (space[0] || null)
+        : (space || null);
+
     return {
         user,
         staff:        staffData,
-        organization: organization || null,  // null for platform admin
-        space:        space || null,         // populated for operators and managers, null for admins
+        organization: normalizedOrganization, // null for platform admin
+        space:        normalizedSpace,        // populated for operators and managers, null for admins
         token
     };
 };
