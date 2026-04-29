@@ -53,6 +53,15 @@ const typeDefs = gql`
     overstay_charges: [OverstayCharge]
   }
 
+  type PaymentMethod {
+    id: ID!
+    code: String!
+    label: String!
+    description: String
+    is_active: Boolean!
+    created_at: DateTime!
+  }
+
   type OverstayCharge {
     id: ID!
     vehicle_id: ID!
@@ -61,6 +70,8 @@ const typeDefs = gql`
     is_collected: Boolean!
     collected_by: ID
     collected_at: DateTime
+    payment_method_code: String
+    payment_method: PaymentMethod
     vehicle: Vehicle
   }
 
@@ -100,6 +111,10 @@ const typeDefs = gql`
     base_fees_collected: String!
     overstay_fees_collected: String!
     total_revenue_today: String!
+    cash_transactions: Int!
+    gpay_transactions: Int!
+    cash_fees_collected: String!
+    gpay_fees_collected: String!
   }
 
   type RevenueSummary {
@@ -258,6 +273,7 @@ const typeDefs = gql`
     vehicle_number: String
     declared_duration_hours: Int
     space_id: ID
+    payment_method_code: String
   }
 
   input PricingRuleInput {
@@ -318,7 +334,7 @@ const typeDefs = gql`
     # Dashboard
     activeVehicles: [Vehicle]!
     getVehicleBySession(session_id: String!): Vehicle
-    dashboardStats: DashboardStats!
+    dashboardStats(period: String, start_date: DateTime, end_date: DateTime): DashboardStats!
 
     # Pricing
     pricingRules: [PricingRule]!
@@ -329,6 +345,10 @@ const typeDefs = gql`
     # Revenue
     revenueSummary(start_date: DateTime, end_date: DateTime): RevenueSummary!
     pendingOverstayCharges: [OverstayCharge]!
+
+    # Payment Methods
+    paymentMethods: [PaymentMethod!]!
+    paymentMethod(code: String!): PaymentMethod
 
     # Staff
     staff(id: ID!): Staff
@@ -380,7 +400,7 @@ const typeDefs = gql`
     processVehicleExit(session_id: String!): ExitResult!
 
     # Payment
-    collectOverstayPayment(overstay_charge_id: ID!): OverstayCharge!
+    collectOverstayPayment(overstay_charge_id: ID!, payment_method_code: String!): OverstayCharge!
 
     # Pricing
     updatePricingRules(rules: [PricingRuleInput!]!): [PricingRule]!

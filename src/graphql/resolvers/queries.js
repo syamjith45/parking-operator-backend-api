@@ -4,6 +4,7 @@ const pricingService     = require('../../services/pricingService');
 const transactionService = require('../../services/transactionService');
 const orgService         = require('../../services/organizationService');   // NEW
 const spaceService       = require('../../services/spaceService');           // NEW
+const paymentMethodService = require('../../services/paymentMethodService');  // NEW
 const { supabase }       = require('../../config/database');
 const { requireRole, requireSameOrg, requireAuth } = require('../../middleware/auth');
 
@@ -22,8 +23,8 @@ const queries = {
     },
 
     // CHANGE: pass full context (was: context.staff only)
-    dashboardStats: async (_, __, context) => {
-        return await dashboardService.getTodayStats(context);
+    dashboardStats: async (_, { period, start_date, end_date }, context) => {
+        return await dashboardService.getTodayStats(context, period, start_date, end_date);
     },
 
     // ─── Pricing ──────────────────────────────────────────────────────────────
@@ -205,6 +206,18 @@ const queries = {
     overstaySlabs: async (_, { organization_id, vehicle_type }, context) => {
         requireSameOrg(context, organization_id);
         return await pricingService.getOverstaySlabs(organization_id, vehicle_type);
+    },
+
+    // ─── Payment Methods (NEW) ────────────────────────────────────────────────
+
+    paymentMethods: async (_, __, context) => {
+        requireAuth(context);
+        return await paymentMethodService.getAllPaymentMethods();
+    },
+
+    paymentMethod: async (_, { code }, context) => {
+        requireAuth(context);
+        return await paymentMethodService.getPaymentMethod(code);
     }
 };
 

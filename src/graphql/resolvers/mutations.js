@@ -51,7 +51,8 @@ const mutations = {
             vehicleNumber:         input.vehicle_number,
             declaredDurationHours: input.declared_duration_hours || null,
             staffId:               context.staff.id,
-            spaceId:               spaceId
+            spaceId:               spaceId,
+            paymentMethodCode:     input.payment_method_code || null
         });
 
         // Invalidate dashboard caches on new entry
@@ -84,9 +85,14 @@ const mutations = {
 
     // ─── Payment ──────────────────────────────────────────────────────────────
 
-    collectOverstayPayment: async (_, { overstay_charge_id }, context) => {
+    collectOverstayPayment: async (_, { overstay_charge_id, payment_method_code }, context) => {
         requireRole(context, ['operator', 'admin', 'manager']);
-        const result = await exitService.collectOverstayPayment(overstay_charge_id, context.staff.id);
+        
+        if (!payment_method_code) {
+            throw new Error('Payment method code must be specified');
+        }
+        
+        const result = await exitService.collectOverstayPayment(overstay_charge_id, context.staff.id, payment_method_code);
 
         // Invalidate revenue caches on payment collection
         if (context.space?.id) {

@@ -23,7 +23,8 @@ class EntryService {
             vehicleNumber,
             staffId,
             declaredDurationHours,
-            spaceId   // NEW — passed from context.staff.space_id in the resolver
+            spaceId,              // NEW — passed from context.staff.space_id in the resolver
+            paymentMethodCode     // NEW — base fee payment method
         } = input;
 
         if (!validatePhoneNumber(driverPhone)) {
@@ -107,16 +108,17 @@ class EntryService {
         const { data: vehicle, error: vehicleError } = await supabase
             .from('vehicles')
             .insert({
-                session_id:              sessionId,
-                driver_phone:            cleanPhone,
-                vehicle_type:            cleanVehicleType,
-                vehicle_number:          cleanVehicleNumber,
-                entry_time:              entryTime,
-                status:                  'ACTIVE',
-                base_fee_paid:           baseFee,
-                declared_duration_hours: declaredDurationHours || null,
-                created_by:              staffId,
-                space_id:                spaceId || null   // NEW — stamped permanently here
+                session_id:                    sessionId,
+                driver_phone:                  cleanPhone,
+                vehicle_type:                  cleanVehicleType,
+                vehicle_number:                cleanVehicleNumber,
+                entry_time:                    entryTime,
+                status:                        'ACTIVE',
+                base_fee_paid:                 baseFee,
+                declared_duration_hours:       declaredDurationHours || null,
+                created_by:                    staffId,
+                space_id:                      spaceId || null,          // NEW — stamped permanently here
+                base_fee_payment_method_code:  paymentMethodCode || null // NEW — payment method for base fee
             })
             .select(`
                 *,

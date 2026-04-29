@@ -1,5 +1,6 @@
 const { supabase } = require('../config/database');
 const pricingService = require('./pricingService');
+const paymentMethodService = require('./paymentMethodService');
 const { calculateOverstayFee, calculateSlabBasedOverstayFee, calculateDurationMinutes } = require('../utils/calculations');
 const { getCurrentTimestamp } = require('../utils/dateHelpers');
 
@@ -132,13 +133,24 @@ class ExitService {
         };
     }
 
-    async collectOverstayPayment(overstayChargeId, staffId) {
+    async collectOverstayPayment(overstayChargeId, staffId, paymentMethodCode) {
+        // Validate payment method code exists
+        if (!paymentMethodCode) {
+            throw new Error('Payment method code is required');
+        }
+
+        const isValid = await paymentMethodService.validatePaymentMethod(paymentMethodCode);
+        if (!isValid) {
+            throw new Error(`Invalid payment method: ${paymentMethodCode}`);
+        }
+
         const { data, error } = await supabase
             .from('overstay_charges')
             .update({
-                is_collected:  true,
-                collected_by:  staffId,
-                collected_at:  getCurrentTimestamp()
+                is_collected:      true,
+                collected_by:      staffId,
+                collected_at:      getCurrentTimestamp(),
+                payment_method_code: paymentMethodCode
             })
             .eq('id', overstayChargeId)
             .eq('is_collected', false)
