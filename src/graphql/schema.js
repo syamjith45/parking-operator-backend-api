@@ -41,6 +41,8 @@ const typeDefs = gql`
     vehicle_type: String!
     vehicle_number: String
     declared_duration_hours: Int
+    parking_mode: String!
+    expected_exit_date: DateTime
     entry_time: DateTime!
     exit_time: DateTime
     status: String!
@@ -96,6 +98,8 @@ const typeDefs = gql`
     vehicle_type: String!
     vehicle_number: String
     declared_duration_hours: Int
+    parking_mode: String
+    expected_exit_date: DateTime
     entry_time: DateTime!
     status: String!
     base_fee_paid: Float!
@@ -272,6 +276,8 @@ const typeDefs = gql`
     vehicle_type: String!
     vehicle_number: String
     declared_duration_hours: Int
+    parking_mode: String
+    expected_exit_date: DateTime
     space_id: ID
     payment_method_code: String
   }

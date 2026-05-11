@@ -1,6 +1,7 @@
 const { supabase }                = require('../config/database');
 const { calculateDurationMinutes } = require('../utils/calculations');
 const pricingService               = require('./pricingService');
+const parkingTime                  = require('../utils/parkingTime');
 const cache                        = require('./cacheService');
 
 /**
@@ -65,16 +66,25 @@ class DashboardService {
             const pricingRule     = rulesMap[vehicle.vehicle_type];
             const durationMinutes = calculateDurationMinutes(vehicle.entry_time, new Date());
 
+            let isOverstay = false;
+            let overstayMinutes = 0;
             let baseMinutes = 0;
+
             if (pricingRule) {
+                const allowedUntilDate = parkingTime.calculateAllowedUntil(vehicle, pricingRule);
+                const allowedUntilMs = allowedUntilDate.getTime();
+                const nowMs = new Date().getTime();
+
+                if (nowMs > allowedUntilMs) {
+                    isOverstay = true;
+                    overstayMinutes = Math.round((nowMs - allowedUntilMs) / (1000 * 60));
+                }
+                
                 baseMinutes = Math.max(
                     pricingRule.base_hours * 60,
                     (vehicle.declared_duration_hours || 0) * 60
                 );
             }
-
-            const isOverstay     = durationMinutes > baseMinutes;
-            const overstayMinutes = isOverstay ? durationMinutes - baseMinutes : 0;
 
             return {
                 ...vehicle,

@@ -3,6 +3,7 @@ const pricingService = require('./pricingService');
 const paymentMethodService = require('./paymentMethodService');
 const { calculateOverstayFee, calculateSlabBasedOverstayFee, calculateDurationMinutes } = require('../utils/calculations');
 const { getCurrentTimestamp } = require('../utils/dateHelpers');
+const parkingTime = require('../utils/parkingTime');
 
 class ExitService {
 
@@ -39,12 +40,15 @@ class ExitService {
         const exitTime        = getCurrentTimestamp();
         const durationMinutes = calculateDurationMinutes(vehicle.entry_time, exitTime);
 
-        const baseMinutes = Math.max(
-            pricingRule.base_hours * 60,
-            (vehicle.declared_duration_hours || 0) * 60
-        );
+        const allowedUntilDate = parkingTime.calculateAllowedUntil(vehicle, pricingRule);
+        const allowedUntilMs = allowedUntilDate.getTime();
+        const exitMs = new Date(exitTime).getTime();
 
         let overstayMinutes = 0;
+        if (exitMs > allowedUntilMs) {
+            overstayMinutes = Math.round((exitMs - allowedUntilMs) / (1000 * 60));
+        }
+
         let overstayFee = 0;
         let appliedSlab = null;
 
@@ -57,21 +61,17 @@ class ExitService {
             // Use slab-based calculation
             const slabs = await pricingService.getOverstaySlabs(organizationId);
             const slabResult = calculateSlabBasedOverstayFee(
-                durationMinutes > 0 ? durationMinutes : 0,
-                baseMinutes,
+                overstayMinutes,
                 slabs
             );
-            overstayMinutes = slabResult.overstayMinutes;
             overstayFee = slabResult.overstayFee;
             appliedSlab = slabResult.appliedSlab;
         } else {
             // Use hourly calculation (default)
             const hourlyResult = calculateOverstayFee(
-                durationMinutes > 0 ? durationMinutes : 0,
-                baseMinutes,
+                overstayMinutes,
                 pricingRule.extra_hour_rate
             );
-            overstayMinutes = hourlyResult.overstayMinutes;
             overstayFee = hourlyResult.overstayFee;
         }
 

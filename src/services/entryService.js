@@ -2,6 +2,7 @@ const { supabase } = require('../config/database');
 const pricingService = require('./pricingService');
 const { validatePhoneNumber, validateVehicleType, sanitizeInput } = require('../utils/validators');
 const { getCurrentTimestamp } = require('../utils/dateHelpers');
+const { PARKING_MODES } = require('../constants/parkingModes');
 
 class EntryService {
 
@@ -23,6 +24,8 @@ class EntryService {
             vehicleNumber,
             staffId,
             declaredDurationHours,
+            parkingMode,
+            expectedExitDate,
             spaceId,              // NEW — passed from context.staff.space_id in the resolver
             paymentMethodCode     // NEW — base fee payment method
         } = input;
@@ -116,6 +119,8 @@ class EntryService {
                 status:                        'ACTIVE',
                 base_fee_paid:                 baseFee,
                 declared_duration_hours:       declaredDurationHours || null,
+                parking_mode:                  parkingMode || PARKING_MODES.HOURLY,
+                expected_exit_date:            expectedExitDate || null,
                 created_by:                    staffId,
                 space_id:                      spaceId || null,          // NEW — stamped permanently here
                 base_fee_payment_method_code:  paymentMethodCode || null // NEW — payment method for base fee

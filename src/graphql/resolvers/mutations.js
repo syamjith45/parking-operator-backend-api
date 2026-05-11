@@ -6,6 +6,7 @@ const spaceService   = require('../../services/spaceService');          // NEW
 const cache          = require('../../services/cacheService');
 const { supabase, supabaseAdmin } = require('../../config/database');
 const { requireRole, requireSameOrg } = require('../../middleware/auth');
+const { PARKING_MODES } = require('../../constants/parkingModes');
 
 const mutations = {
 
@@ -50,6 +51,8 @@ const mutations = {
             vehicleType:           input.vehicle_type,
             vehicleNumber:         input.vehicle_number,
             declaredDurationHours: input.declared_duration_hours || null,
+            parkingMode:           input.parking_mode || PARKING_MODES.HOURLY,
+            expectedExitDate:      input.expected_exit_date || null,
             staffId:               context.staff.id,
             spaceId:               spaceId,
             paymentMethodCode:     input.payment_method_code || null

@@ -1,16 +1,13 @@
 /**
- * Calculate overstay fee based on minutes over base period
- * @param {number} totalMinutes - Total parking duration in minutes
- * @param {number} baseMinutes - Base period included in base fee
+ * Calculate overstay fee based on overstay minutes
+ * @param {number} overstayMinutes - Total overstay duration in minutes
  * @param {number} extraHourRate - Rate per extra hour
  * @returns {object} - { overstayMinutes, overstayFee }
  */
-const calculateOverstayFee = (totalMinutes, baseMinutes, extraHourRate) => {
-    if (totalMinutes <= baseMinutes) {
+const calculateOverstayFee = (overstayMinutes, extraHourRate) => {
+    if (overstayMinutes <= 0) {
         return { overstayMinutes: 0, overstayFee: 0 };
     }
-
-    const overstayMinutes = totalMinutes - baseMinutes;
 
     // Calculate extra hours (round up)
     const extraHours = Math.ceil(overstayMinutes / 60);
@@ -24,35 +21,30 @@ const calculateOverstayFee = (totalMinutes, baseMinutes, extraHourRate) => {
 
 /**
  * Calculate slab-based overstay fee
- * @param {number} totalMinutes - Total parking duration in minutes
- * @param {number} baseMinutes - Base period included in base fee
+ * @param {number} overstayMinutes - Total overstay duration in minutes
  * @param {Array} slabs - Array of { slab_hours, slab_fee } sorted by slab_hours ascending
  * @returns {object} - { overstayMinutes, overstayFee, appliedSlab }
  */
-const calculateSlabBasedOverstayFee = (totalMinutes, baseMinutes, slabs) => {
-    if (totalMinutes <= baseMinutes) {
+const calculateSlabBasedOverstayFee = (overstayMinutes, slabs) => {
+    if (overstayMinutes <= 0) {
         return { overstayMinutes: 0, overstayFee: 0, appliedSlab: null };
     }
 
-    const overstayMinutes = totalMinutes - baseMinutes;
-    const totalHours = totalMinutes / 60;
+    const overstayHours = overstayMinutes / 60;
 
     // Sort slabs by slab_hours descending to find the highest applicable slab
     const sortedSlabs = [...slabs].sort((a, b) => b.slab_hours - a.slab_hours);
 
-    // Find the first slab where totalHours > slab_hours
-    // If totalHours is 14h and slabs are [3h, 12h, 24h], we check:
-    // - 24h slab: 14 > 24? No
-    // - 12h slab: 14 > 12? Yes, apply 12h slab fee
+    // Find the first slab where overstayHours > slab_hours
     let appliedSlab = null;
     for (const slab of sortedSlabs) {
-        if (totalHours > slab.slab_hours) {
+        if (overstayHours > slab.slab_hours) {
             appliedSlab = slab;
             break;
         }
     }
 
-    // If no slab found where totalHours > slab_hours, use the last (largest) slab
+    // If no slab found where overstayHours > slab_hours, use the last (largest) slab
     if (!appliedSlab && sortedSlabs.length > 0) {
         appliedSlab = sortedSlabs[sortedSlabs.length - 1];
     }

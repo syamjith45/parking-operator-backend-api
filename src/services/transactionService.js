@@ -2,6 +2,7 @@ const { supabase }                                       = require('../config/da
 const pricingService                                     = require('./pricingService');
 const { calculateOverstayFee, calculateSlabBasedOverstayFee, calculateDurationMinutes } = require('../utils/calculations');
 const { getCurrentTimestamp }                            = require('../utils/dateHelpers');
+const parkingTime                                        = require('../utils/parkingTime');
 const cache                                              = require('./cacheService');
 
 class TransactionService {
@@ -99,28 +100,27 @@ class TransactionService {
 
             const rule = pricingRulesMap[vehicle.vehicle_type.toLowerCase()];
             if (rule) {
-                const baseMinutes = Math.max(
-                    rule.base_hours * 60,
-                    (vehicle.declared_duration_hours || 0) * 60
-                );
+                const allowedUntilDate = parkingTime.calculateAllowedUntil(vehicle, rule);
+                const allowedUntilMs = allowedUntilDate.getTime();
+                const exitMs = new Date(endTime).getTime();
+
+                if (exitMs > allowedUntilMs) {
+                    overstayMinutes = Math.round((exitMs - allowedUntilMs) / (1000 * 60));
+                }
 
                 if (pricingTypeObj.code === 'slab_based' && slabs.length > 0) {
                     // Use slab-based calculation
                     const slabResult = calculateSlabBasedOverstayFee(
-                        durationMinutes > 0 ? durationMinutes : 0,
-                        baseMinutes,
+                        overstayMinutes,
                         slabs
                     );
-                    overstayMinutes     = slabResult.overstayMinutes;
                     computedOverstayFee = slabResult.overstayFee;
                 } else {
                     // Use hourly calculation (default)
                     const overstayDetails = calculateOverstayFee(
-                        durationMinutes > 0 ? durationMinutes : 0,
-                        baseMinutes,
+                        overstayMinutes,
                         rule.extra_hour_rate
                     );
-                    overstayMinutes     = overstayDetails.overstayMinutes;
                     computedOverstayFee = overstayDetails.overstayFee;
                 }
             }
