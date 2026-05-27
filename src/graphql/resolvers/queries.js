@@ -97,14 +97,22 @@ const queries = {
     },
 
     me: async (_, __, context) => {
-        if (!context.staff) throw new Error('Not authenticated');
-        return context.staff;
+        if (!context.user) throw new Error('Not authenticated');
+        return context.staff || {
+            id: context.user.id,
+            role: 'admin',
+            email: context.user.email
+        };
     },
 
     myProfile: async (_, __, context) => {
-        if (!context.staff) throw new Error('Not authenticated');
+        if (!context.user) throw new Error('Not authenticated');
         return {
-            ...context.staff,
+            ...(context.staff || {
+                id: context.user.id,
+                role: 'admin',
+                email: context.user.email
+            }),
             space: context.space || null,
             organization: context.organization || null
         };

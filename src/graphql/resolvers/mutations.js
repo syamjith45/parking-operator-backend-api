@@ -141,7 +141,7 @@ const mutations = {
         requireRole(context, ['admin']);
         return await orgService.createOrganization({
             ...input,
-            ownerId: context.staff.id
+            ownerId: context.staff?.id || context.user?.id || null
         });
     },
 

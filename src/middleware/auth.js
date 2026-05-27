@@ -29,14 +29,10 @@ const authenticateUser = async (authHeader) => {
             space:spaces(*)
         `)
         .eq('user_id', user.id)
-        .single();
-
-    if (staffError || !staff) {
-        throw new Error('User is not a registered staff member');
-    }
+        .maybeSingle();
 
     // Destructure joined relations out of the staff object
-    const { organization, space, ...staffData } = staff;
+    const { organization, space, ...staffData } = (staff || {});
 
     // Supabase relation payloads can be object or single-item array depending on embedding shape.
     const normalizedOrganization = Array.isArray(organization)
@@ -57,22 +53,28 @@ const authenticateUser = async (authHeader) => {
 };
 
 const requireAuth = (context) => {
-    if (!context.staff) {
+    if (!context.user) {
         throw new Error('Authentication required');
     }
 };
 
 const requireRole = (context, roles) => {
-    requireAuth(context);
-    if (!roles.includes(context.staff.role)) {
+    if (!context.user) {
+        throw new Error('Authentication required');
+    }
+    const role = context.staff?.role || 'admin';  // Admins without staff record get 'admin' role
+    if (!roles.includes(role)) {
         throw new Error('Not authorized for this action');
     }
 };
 
 // NEW: blocks cross-org access. Admin role bypasses.
 const requireSameOrg = (context, orgId) => {
-    requireAuth(context);
-    if (context.staff.role === 'admin') return;
+    if (!context.user) {
+        throw new Error('Authentication required');
+    }
+    const role = context.staff?.role || 'admin';
+    if (role === 'admin') return;
     if (context.organization?.id !== orgId) {
         throw new Error('Access denied: resource belongs to a different organization');
     }

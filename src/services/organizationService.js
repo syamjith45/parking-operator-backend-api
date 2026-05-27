@@ -63,13 +63,41 @@ class OrganizationService {
         return data || [];
     }
 
-    async createOrganization({ name, slug, phone, email, address, ownerId }) {
+    async createOrganization({ name, slug, phone, email, address, ownerId, pricing_type_id }) {
+        // If no pricing_type_id provided, get the default (hourly)
+        let pricingTypeId = pricing_type_id;
+        
+        if (!pricingTypeId) {
+            const { data: defaultPricingTypes, error: ptError } = await supabase
+                .from('pricing_types')
+                .select('id')
+                .eq('is_active', true)
+                .order('code', { ascending: true })
+                .limit(1);
+            
+            if (ptError || !defaultPricingTypes || defaultPricingTypes.length === 0) {
+                console.error('No pricing types found:', ptError);
+                throw new Error('No active pricing types available. Please create pricing types first.');
+            }
+            
+            pricingTypeId = defaultPricingTypes[0].id;
+        }
+
         // Check slug uniqueness before insert for a clearer error message
-        const { data: existing } = await supabase
+        const { data: existing, error: slugError } = await supabase
             .from('organizations')
             .select('id')
             .eq('slug', slug)
-            .single();
+            .maybeSingle();
+
+        if (slugError) {
+            console.error('Database Error - Check Slug:', {
+                message: slugError.message,
+                code: slugError.code,
+                details: slugError.details || slugError
+            });
+            throw new Error(`Database error checking slug: ${slugError.message}`);
+        }
 
         if (existing) throw new Error(`Slug "${slug}" is already taken`);
 
@@ -82,12 +110,21 @@ class OrganizationService {
                 email:    email    || null,
                 address:  address  || null,
                 owner_id: ownerId  || null,
+                pricing_type_id: pricingTypeId,
                 is_active: true
             })
             .select()
             .single();
 
-        if (error) throw new Error('Failed to create organization');
+        if (error) {
+            console.error('Database Error - Create Organization:', {
+                message: error.message,
+                code: error.code,
+                status: error.status,
+                details: error.details || error
+            });
+            throw new Error(`Failed to create organization: ${error.message}`);
+        }
         return data;
     }
 

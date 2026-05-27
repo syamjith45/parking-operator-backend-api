@@ -37,7 +37,7 @@ const typeDefs = gql`
   type Vehicle {
     id: ID!
     session_id: String!
-    driver_phone: String!
+    driver_phone: String
     vehicle_type: String!
     vehicle_number: String
     declared_duration_hours: Int
@@ -80,7 +80,7 @@ const typeDefs = gql`
   type ExitResult {
     session_id: String!
     vehicle_type: String!
-    driver_phone: String!
+    driver_phone: String
     entry_time: DateTime!
     exit_time: DateTime!
     duration_minutes: Int!
@@ -94,7 +94,7 @@ const typeDefs = gql`
   type VehicleEntryResult {
     id: ID!
     session_id: String!
-    driver_phone: String!
+    driver_phone: String
     vehicle_type: String!
     vehicle_number: String
     declared_duration_hours: Int
@@ -145,7 +145,7 @@ const typeDefs = gql`
   type TransactionRecord {
     id: ID!
     session_id: String!
-    driver_phone: String!
+    driver_phone: String
     vehicle_type: String!
     vehicle_number: String
     entry_time: DateTime!
@@ -272,7 +272,7 @@ const typeDefs = gql`
   # ─── Inputs ─────────────────────────────────────────────────────────────────
 
   input VehicleEntryInput {
-    driver_phone: String!
+    driver_phone: String
     vehicle_type: String!
     vehicle_number: String
     declared_duration_hours: Int

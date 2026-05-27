@@ -30,7 +30,7 @@ class EntryService {
             paymentMethodCode     // NEW — base fee payment method
         } = input;
 
-        if (!validatePhoneNumber(driverPhone)) {
+        if (driverPhone && !validatePhoneNumber(driverPhone)) {
             throw new Error('Invalid phone number format');
         }
 
@@ -38,7 +38,7 @@ class EntryService {
             throw new Error('Invalid vehicle type. Must be: two_wheeler, four_wheeler, van, truck, or car_special_care');
         }
 
-        const cleanPhone         = sanitizeInput(driverPhone);
+        const cleanPhone         = driverPhone ? sanitizeInput(driverPhone) : null;
         const cleanVehicleType   = vehicleType.toLowerCase();
         const cleanVehicleNumber = vehicleNumber ? sanitizeInput(vehicleNumber) : null;
 
@@ -100,9 +100,11 @@ class EntryService {
             throw new Error('Invalid staff ID');
         }
 
-        const existingSession = await this.checkActiveSession(cleanPhone);
-        if (existingSession) {
-            throw new Error(`Active session already exists for this number: ${existingSession.session_id}`);
+        if (cleanPhone) {
+            const existingSession = await this.checkActiveSession(cleanPhone);
+            if (existingSession) {
+                throw new Error(`Active session already exists for this number: ${existingSession.session_id}`);
+            }
         }
 
         const sessionId = this.generateSessionId();
